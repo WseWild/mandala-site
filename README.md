@@ -5,6 +5,6 @@
 
 ## Публикация на GitHub Pages
 
-1. Создай репозиторий и загрузи в корень `index.html`, `.nojekyll`, `robots.txt`.
+1. Создай репозиторий и загрузи в корень `index.html` и `.nojekyll`.
 2. Settings → Pages → Source: *Deploy from a branch*, ветка `main`, папка `/ (root)`.
 3. Через минуту сайт будет на `https://<логин>.github.io/<репозиторий>/`.
