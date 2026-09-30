@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>html,body{margin:0}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}</style>
+<title>Мандала</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Jost:wght@400;500&display=swap">
+<style>
+/* Layout: one-screen app — full-bleed shader sky, a narrow centered column (header, breath cue, mandala, clock, controls), settings in a bottom sheet */
+:root{
+  --bg:#0A0520; --fg:#F4EEFF; --fg-soft:rgba(244,238,255,.74); --line:rgba(244,238,255,.3);
+  --panel:rgba(10,6,24,.94);
+  --glow:rgba(255,79,216,.45); --glow2:rgba(123,92,255,.35);
+  --display:'Cormorant Garamond','Cormorant',Georgia,'Times New Roman',serif;
+  --ui:'Jost','Futura','Avenir Next','Century Gothic',system-ui,sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--ui);overflow:hidden;transition:background-color 1.2s ease}
+body.nogl{background:radial-gradient(circle at 50% 40%,var(--glow) 0,transparent 40%),var(--bg)}
+#sky{position:fixed;inset:0;width:100%;height:100%;display:block}
+.app{position:relative;height:100%;max-width:440px;margin:0 auto;box-sizing:border-box;padding-inline:20px;padding-block:22px 20px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:10px}
+header{width:100%;display:grid;grid-template-columns:44px 1fr 44px;align-items:center}
+.mark{font-size:12px;font-weight:500;letter-spacing:.42em;text-transform:uppercase;color:var(--fg-soft);text-align:center;padding-left:.42em}
+.icon-btn{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--fg);display:grid;place-items:center;cursor:pointer;padding:0}
+.top{min-height:72px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+h1{margin:0;font-family:var(--display);font-weight:300;font-style:italic;font-size:34px;line-height:1.1;text-wrap:balance}
+.cue{font-family:var(--display);font-style:italic;font-weight:300;font-size:42px;line-height:1;transition:letter-spacing 3s ease}
+.cue.p0{letter-spacing:.09em}.cue.p2{letter-spacing:.01em}.cue.p1,.cue.p3{letter-spacing:.05em}
+.cue-hint{margin-top:8px;font-size:13px;color:var(--fg-soft)}
+.slot{position:relative;width:min(100%,33vh,340px);aspect-ratio:1;max-width:100%;flex-shrink:0}
+.clock{display:flex;flex-direction:column;align-items:center;gap:4px}
+.big{font-family:var(--display);font-weight:300;font-size:clamp(40px,6.2vh,56px);line-height:1;font-variant-numeric:lining-nums tabular-nums;letter-spacing:.04em;text-shadow:0 0 24px var(--glow)}
+.sub{font-size:11px;font-weight:500;letter-spacing:.28em;text-transform:uppercase;color:var(--fg-soft)}
+.controls{width:100%;display:flex;flex-direction:column;gap:14px;flex-shrink:0}
+.controls>*{flex-shrink:0}
+.label{font-size:11px;font-weight:500;letter-spacing:.28em;text-transform:uppercase;color:var(--fg-soft);text-align:center;margin-bottom:8px}
+.pills{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+.pill{height:44px;min-width:48px;padding:0 12px;border-radius:22px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--fg);font:500 16px var(--ui);cursor:pointer;transition:background .3s,color .3s,border-color .3s}
+.pill[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.chakras{display:flex;justify-content:center;gap:4px}
+.ch{width:44px;height:44px;border-radius:50%;border:none;background:none;padding:0;cursor:pointer;display:grid;place-items:center}
+.ch .sw{width:32px;height:32px;border-radius:50%;transition:box-shadow .4s,transform .4s}
+.ch[aria-pressed="true"] .sw{transform:scale(1.12);box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--fg),0 0 22px var(--glow)}
+.ch-name{text-align:center;font-size:13px;color:var(--fg);margin-top:6px}
+.ch-name span{color:var(--fg-soft)}
+.summary{align-self:center;min-height:36px;padding:0 14px;border-radius:18px;border:1px dashed var(--line);background:none;color:var(--fg-soft);font:400 12px var(--ui);cursor:pointer;max-width:100%}
+.row{display:flex;gap:12px}
+.btn{flex:1 0 auto;height:56px;border-radius:28px;border:none;background:var(--fg);color:var(--bg);font:500 15px var(--ui);letter-spacing:.16em;text-transform:uppercase;cursor:pointer;box-shadow:0 0 36px var(--glow),0 0 80px var(--glow2);transition:transform .2s ease,box-shadow .6s}
+.btn:active{transform:scale(.98)}
+.btn.ghost{background:rgba(255,255,255,.04);color:var(--fg);border:1px solid rgba(244,238,255,.4);box-shadow:none}
+.meta{text-align:center;font-size:13px;color:var(--fg-soft)}
+.done-text{margin:0;font-family:var(--display);font-size:21px;line-height:1.35;text-align:center}
+.hint{font-size:12px;color:var(--fg-soft);text-align:center}
+button:focus-visible,input:focus-visible{outline:2px solid var(--fg);outline-offset:3px}
+.fade{animation:fade .8s ease both}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* immersive mode: chrome dissolves during a running session, any touch brings it back */
+.dim{transition:opacity 1.4s ease}
+body.immersed .dim{opacity:0;pointer-events:none}
+
+/* settings sheet */
+.sheet{position:fixed;inset:0;z-index:5;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);animation:fade .35s ease both}
+.card{width:min(100%,460px);max-height:90%;overflow-y:auto;box-sizing:border-box;padding-inline:20px;padding-block:18px calc(20px + env(safe-area-inset-bottom,0px));background:var(--panel);background:color-mix(in srgb,var(--bg) 90%,transparent);border:1px solid var(--line);border-bottom:none;border-radius:24px 24px 0 0;display:flex;flex-direction:column;gap:22px}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.card h2{margin:0;font-family:var(--display);font-weight:400;font-size:26px}
+.group{display:flex;flex-direction:column;gap:10px}
+.group h3{margin:0;font-size:11px;font-weight:500;letter-spacing:.28em;text-transform:uppercase;color:var(--fg-soft)}
+.opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.opt{min-height:64px;text-align:left;padding:10px 14px;border-radius:16px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--fg);cursor:pointer;font:400 13px var(--ui);display:flex;flex-direction:column;gap:3px}
+.opt b{font-weight:500;font-size:15px}
+.opt small{color:var(--fg-soft);font-size:12px;line-height:1.3}
+.opt[aria-pressed="true"]{border-color:var(--fg);background:rgba(255,255,255,.12);box-shadow:0 0 18px var(--glow2)}
+.segs{display:flex;flex-wrap:wrap;gap:6px}
+.seg{min-height:44px;padding:0 14px;border-radius:22px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--fg);font:500 14px var(--ui);cursor:pointer}
+.seg[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.note{margin:0;font-size:12px;line-height:1.45;color:var(--fg-soft)}
+.slider{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:12px;font-size:13px;color:var(--fg-soft)}
+.slider input{width:100%;accent-color:var(--fg);height:44px;margin:0}
+.check{display:flex;align-items:center;gap:12px;min-height:44px;font-size:14px;cursor:pointer}
+.check input{width:20px;height:20px;accent-color:var(--fg);margin:0}
+.card .row .btn{height:50px;font-size:14px}
+
+@media (max-height:760px){.app{gap:6px;padding-block:14px 14px}.pill{height:40px}.top{min-height:64px}h1{font-size:28px}.cue{font-size:34px}.controls{gap:12px}.btn{height:50px}}
+@media (prefers-reduced-motion:reduce){.fade,.sheet{animation:none}.cue,.dim{transition:none}}
+</style>
+
+</head>
+<body>
+<canvas id="sky" aria-hidden="true"></canvas>
+<main class="app">
+  <header class="dim">
+    <button type="button" class="icon-btn" id="fsBtn" aria-label="Полноэкранный режим">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    </button>
+    <div class="mark">Мандала</div>
+    <button type="button" class="icon-btn" id="setBtn" aria-label="Настройки практики">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+    </button>
+  </header>
+
+  <section class="top" aria-live="polite">
+    <h1 id="setupTitle">Сколько тишины<br>сегодня?</h1>
+    <div id="sessTitle" hidden>
+      <div class="cue" id="cue">Вдох</div>
+      <div class="cue-hint dim" id="cueHint">Следуй за дыханием мандалы</div>
+    </div>
+    <h1 id="doneTitle" hidden>Практика<br>завершена</h1>
+  </section>
+
+  <div class="slot" id="slot" aria-hidden="true"></div>
+  <div class="clock" role="timer">
+    <div class="big" id="big">10:00</div>
+    <div class="sub" id="sub">длительность</div>
+  </div>
+
+  <section class="controls" id="setupCtl">
+    <div>
+      <div class="pills" id="pills" role="group" aria-label="Длительность, минут"></div>
+    </div>
+    <div>
+      <div class="chakras" id="chakras" role="group" aria-label="Чакра"></div>
+      <div class="ch-name" id="chName"></div>
+    </div>
+    <button type="button" class="summary" id="summaryBtn"></button>
+    <button type="button" class="btn" id="startBtn">Начать</button>
+  </section>
+
+  <section class="controls dim" id="sessCtl" hidden>
+    <div class="meta" id="meta"></div>
+    <div class="row">
+      <button type="button" class="btn ghost" id="stopBtn">Завершить</button>
+      <button type="button" class="btn" id="pauseBtn">Пауза</button>
+    </div>
+    <div class="hint">Пробел — пауза. Интерфейс скроется сам, коснись экрана, чтобы вернуть.</div>
+  </section>
+
+  <section class="controls" id="doneCtl" hidden>
+    <p class="done-text" id="doneText"></p>
+    <button type="button" class="btn" id="againBtn">Ещё раз</button>
+  </section>
+</main>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="card-head">
+      <h2 id="sheetTitle">Настройки практики</h2>
+      <button type="button" class="icon-btn" id="closeBtn" aria-label="Закрыть">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+
+    <div class="group">
+      <h3>Дыхание</h3>
+      <div class="opts" id="breathOpts"></div>
+    </div>
+
+    <div class="group">
+      <h3 id="ambLabel">Звуковой фон</h3>
+      <div class="segs" id="ambOpts" role="group" aria-labelledby="ambLabel"></div>
+      <label class="slider" for="ambVol">Громкость <input type="range" id="ambVol" min="0" max="100" step="1"></label>
+    </div>
+
+    <div class="group">
+      <h3 id="beatLabel">Бинауральный ритм</h3>
+      <div class="segs" id="beatOpts" role="group" aria-labelledby="beatLabel"></div>
+      <p class="note" id="beatNote"></p>
+      <label class="slider" for="binVol">Громкость <input type="range" id="binVol" min="0" max="100" step="1"></label>
+    </div>
+
+    <p class="note" id="qualityNote">Звук синтезируется в реальном времени: 32-bit float, частота появится после первого запуска звука.</p>
+
+    <label class="check" for="bowlChk"><input type="checkbox" id="bowlChk"> Поющая чаша в начале и в конце</label>
+
+    <div class="row">
+      <button type="button" class="btn ghost" id="previewBtn">Послушать</button>
+      <button type="button" class="btn" id="doneBtn">Готово</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  /* ---------- Data ---------- */
+  // geom: yantra drawn in the centre — 0 none, 1 square, 2 crescent, 3 down triangle, 4 hexagram, 5 triangle+circle, 6 circle+small triangle
+  const CHAKRAS = [
+    { name: 'Муладхара', role: 'корень', hz: 396, petals: 4, outer: 8, seg: 8, geom: 1, bg: '#170306', a: '#E3122E', b: '#FF6A3D', c: '#FFB27A', gold: '#FFD479' },
+    { name: 'Свадхистана', role: 'сакральная', hz: 417, petals: 6, outer: 12, seg: 12, geom: 2, bg: '#180903', a: '#FF7A1A', b: '#FF3D6E', c: '#FFC46B', gold: '#FFE6A8' },
+    { name: 'Манипура', role: 'солнечное сплетение', hz: 528, petals: 10, outer: 20, seg: 10, geom: 3, bg: '#150F03', a: '#FFC21A', b: '#FF7A1A', c: '#FFF07A', gold: '#FFF6D6' },
+    { name: 'Анахата', role: 'сердце', hz: 639, petals: 12, outer: 24, seg: 12, geom: 4, bg: '#03140F', a: '#2FD68E', b: '#1FA8FF', c: '#C6FF6B', gold: '#FFE08A' },
+    { name: 'Вишудха', role: 'горло', hz: 741, petals: 16, outer: 32, seg: 16, geom: 5, bg: '#030F20', a: '#1F8BFF', b: '#22E1FF', c: '#9EEBFF', gold: '#E6F4FF' },
+    { name: 'Аджна', role: 'третий глаз', hz: 852, petals: 2, outer: 16, seg: 8, geom: 6, bg: '#0A0520', a: '#7B5CFF', b: '#FF4FD8', c: '#5CE1FF', gold: '#FFD479' },
+    { name: 'Сахасрара', role: 'корона', hz: 963, petals: 20, outer: 40, seg: 24, geom: 0, bg: '#0E0819', a: '#A77BFF', b: '#FF8BEA', c: '#E9E4FF', gold: '#FFFFFF' }
+  ];
+  const BREATHS = [
+    { id: 'even', name: 'Ровное', label: '4–4', ph: [4, 0, 4, 0], note: 'Мягкий базовый ритм' },
+    { id: 'box', name: 'Квадрат', label: '4–4–4–4', ph: [4, 4, 4, 4], note: 'Собранность и фокус' },
+    { id: '478', name: 'Расслабление', label: '4–7–8', ph: [4, 7, 8, 0], note: 'Перед сном, долгий выдох' },
+    { id: 'coh', name: 'Когерентное', label: '5,5–5,5', ph: [5.5, 0, 5.5, 0], note: 'Около 5,5 вдохов в минуту' }
+  ];
+  const AMBS = [
+    { id: 'none', name: 'Тишина' }, { id: 'cosmos', name: 'Космос' }, { id: 'rain', name: 'Дождь' }, { id: 'ocean', name: 'Океан' }
+  ];
+  const BEATS = [
+    { id: 'off', name: 'Выкл', hz: 0, note: 'Бинауральный ритм выключен.' },
+    { id: 'delta', name: 'Дельта 2 Гц', hz: 2, note: 'Дельта-диапазон обычно связывают с глубоким покоем и сном.' },
+    { id: 'theta', name: 'Тета 6 Гц', hz: 6, note: 'Тета-диапазон обычно связывают с глубокой медитацией и образным мышлением.' },
+    { id: 'alpha', name: 'Альфа 10 Гц', hz: 10, note: 'Альфа-диапазон обычно связывают со спокойным бодрствованием.' },
+    { id: 'gamma', name: 'Гамма 40 Гц', hz: 40, note: 'Гамма-диапазон обычно связывают с концентрацией и ясностью.' }
+  ];
+  const PHASE_WORDS = ['Вдох', 'Задержка', 'Выдох', 'Задержка'];
+  const DURATIONS = [5, 10, 15, 20, 30, 45];
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('mandala.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('mandala.' + k, JSON.stringify(v)); } catch (e) {} }
+  };
+  const pick = (list, id, def) => (list.some((x) => x.id === id) ? id : def);
+  const clampIdx = (i, n, d) => (Number.isInteger(i) && i >= 0 && i < n ? i : d);
+
+  const st = {
+    screen: 'setup',
+    minutes: DURATIONS.includes(store.get('minutes', 10)) ? store.get('minutes', 10) : 10,
+    chakra: clampIdx(store.get('chakra', 5), CHAKRAS.length, 5),
+    breath: pick(BREATHS, store.get('breath', 'even'), 'even'),
+    amb: pick(AMBS, store.get('amb', 'cosmos'), 'cosmos'),
+    beat: pick(BEATS, store.get('beat', 'theta'), 'theta'),
+    ambVol: Math.min(1, Math.max(0, +store.get('ambVol', 0.6) || 0)),
+    binVol: Math.min(1, Math.max(0, +store.get('binVol', 0.5) || 0)),
+    bowl: store.get('bowl', true) !== false,
+    running: false, endAt: 0, remainMs: 0, preview: false
+  };
+  const byId = (list, id) => list.find((x) => x.id === id);
+
+  const $ = (id) => document.getElementById(id);
+  const el = {};
+  ['sky', 'slot', 'big', 'sub', 'cue', 'cueHint', 'setupTitle', 'sessTitle', 'doneTitle', 'setupCtl', 'sessCtl', 'doneCtl', 'pills', 'chakras', 'chName', 'summaryBtn', 'meta', 'doneText',
+    'startBtn', 'stopBtn', 'pauseBtn', 'againBtn', 'fsBtn', 'setBtn', 'sheet', 'closeBtn', 'breathOpts', 'ambOpts', 'beatOpts', 'beatNote', 'ambVol', 'binVol', 'bowlChk', 'previewBtn', 'doneBtn', 'qualityNote']
+    .forEach((id) => { el[id] = $(id); });
+
+  const plural = (n, one, few, many) => { const a = n % 10, b = n % 100; if (a === 1 && b !== 11) return one; if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return few; return many; };
+  const minWord = (n) => plural(n, 'минута', 'минуты', 'минут');
+  const fmt = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); const m = Math.floor(s / 60), r = s % 60; return m + ':' + (r < 10 ? '0' : '') + r; };
+  const hexA = (h, a) => { const n = parseInt(h.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+
+  /* ---------- Audio engine: high-resolution synthesis ----------
+     96 kHz context where the device allows it, 32-bit float graph, 30 s decorrelated stereo noise (no audible loop),
+     generated convolution reverb for ambience and bowl, binaural kept dry, soft limiter on the master bus. */
+  const A = { ctx: null, master: null, bus: null, verb: null, amb: null, bin: null, active: false, buffers: {}, rate: 0 };
+  function audioCtx() {
+    if (!A.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      for (const opts of [{ sampleRate: 96000, latencyHint: 'playback' }, { latencyHint: 'playback' }, undefined]) {
+        try { A.ctx = opts ? new AC(opts) : new AC(); break; } catch (e) { A.ctx = null; }
+      }
+      if (!A.ctx) return null;
+      const ac = A.ctx;
+      A.rate = ac.sampleRate;
+      const limiter = ac.createDynamicsCompressor();
+      limiter.threshold.value = -8; limiter.knee.value = 12; limiter.ratio.value = 4; limiter.attack.value = .01; limiter.release.value = .4;
+      limiter.connect(ac.destination);
+      A.bus = ac.createGain(); A.bus.gain.value = .9; A.bus.connect(limiter);        // everything ends here
+      A.master = ac.createGain(); A.master.gain.value = 0; A.master.connect(A.bus); // soundscape (pause fades this)
+      A.verb = ac.createConvolver(); A.verb.buffer = impulse(4.8, 2.6);
+      const wet = ac.createGain(); wet.gain.value = .42; A.verb.connect(wet).connect(A.bus);
+      render();
+    }
+    if (A.ctx.state === 'suspended') A.ctx.resume();
+    return A.ctx;
+  }
+  function impulse(seconds, decay) {
+    const ac = A.ctx, len = Math.round(ac.sampleRate * seconds), buf = ac.createBuffer(2, len, ac.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch); let lp = 0;
+      for (let i = 0; i < len; i++) {
+        const t = i / len;
+        const k = .15 + .8 * t;                      // high frequencies die away faster, like a real hall
+        lp = lp + k * ((Math.random() * 2 - 1) - lp);
+        d[i] = lp * Math.pow(1 - t, decay) * (i < ac.sampleRate * .012 ? i / (ac.sampleRate * .012) : 1);
+      }
+    }
+    return buf;
+  }
+  function noiseBuf(kind) {
+    if (A.buffers[kind]) return A.buffers[kind];
+    const ac = A.ctx, len = Math.round(ac.sampleRate * 30), buf = ac.createBuffer(2, len, ac.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {                 // independent channels = wide, natural stereo
+      const d = buf.getChannelData(ch);
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, last = 0;
+      for (let i = 0; i < len; i++) {
+        const w = Math.random() * 2 - 1;
+        if (kind === 'pink') {
+          b0 = .99886 * b0 + w * .0555179; b1 = .99332 * b1 + w * .0750759; b2 = .969 * b2 + w * .153852;
+          b3 = .8665 * b3 + w * .3104856; b4 = .55 * b4 + w * .5329522; b5 = -.7616 * b5 - w * .016898;
+          d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * .5362) * .11; b6 = w * .115926;
+        } else { last = (last + .02 * w) / 1.02; d[i] = last * 3.5; }
+      }
+      const f = Math.round(ac.sampleRate * .5);
+      for (let i = 0; i < f; i++) { const k = Math.sin(i / f * Math.PI / 2); d[i] = d[i] * k + d[len - f + i] * Math.cos(i / f * Math.PI / 2); }
+    }
+    return (A.buffers[kind] = buf);
+  }
+  let warmWave = null;
+  function warm() { // soft harmonic series: fuller than a sine, never buzzy
+    if (warmWave) return warmWave;
+    const n = 12, re = new Float32Array(n), im = new Float32Array(n);
+    for (let h = 1; h < n; h++) im[h] = 1 / Math.pow(h, 2.2) * (h % 2 ? 1 : .6);
+    return (warmWave = A.ctx.createPeriodicWave(re, im));
+  }
+  function stopGroup(g, fade) {
+    if (!g) return;
+    const t = A.ctx.currentTime;
+    g.out.gain.cancelScheduledValues(t); g.out.gain.setTargetAtTime(0, t, fade / 4);
+    if (g.timer) clearInterval(g.timer);
+    setTimeout(() => g.nodes.forEach((n) => { try { n.stop && n.stop(); } catch (e) {} try { n.disconnect(); } catch (e) {} }), fade * 1000 + 300);
+  }
+  function buildAmb(kind) {
+    const ac = A.ctx, out = ac.createGain(); out.gain.value = 0;
+    const send = ac.createGain(); send.gain.value = kind === 'cosmos' ? .9 : .35;
+    out.connect(A.master); out.connect(send).connect(A.verb);
+    const nodes = [out, send], g = { out, nodes, timer: null };
+    const add = (n) => { nodes.push(n); return n; };
+    const src = (k) => { const s = add(ac.createBufferSource()); s.buffer = noiseBuf(k); s.loop = true; s.start(0, Math.random() * 25); return s; };
+    const filt = (type, f, q) => { const b = add(ac.createBiquadFilter()); b.type = type; b.frequency.value = f; if (q) b.Q.value = q; return b; };
+    const gain = (v) => { const x = add(ac.createGain()); x.gain.value = v; return x; };
+    const pan = (v) => { const p = add(ac.createStereoPanner ? ac.createStereoPanner() : ac.createGain()); if (p.pan) p.pan.value = v; return p; };
+    const lfo = (freq, depth, param, phase) => { const o = add(ac.createOscillator()); o.frequency.value = freq; const d = gain(depth); o.connect(d).connect(param); o.start(ac.currentTime + (phase || 0)); };
+    const base = CHAKRAS[st.chakra].hz / 4;
+    if (kind === 'cosmos') {
+      const lp = filt('lowpass', 900, .9); lp.connect(out); lfo(.037, 420, lp.frequency);
+      const voices = [[.5, 0, .2, 0], [1, -.35, .24, -.5], [1, .41, .24, .5], [1.5, -.6, .12, -.8], [1.5, .55, .12, .8], [2, .9, .08, -.3], [3, -1.1, .035, .3]];
+      voices.forEach(([r, det, v, p], i) => {
+        const o = add(ac.createOscillator()); o.setPeriodicWave(warm()); o.frequency.value = base * r + det;
+        const vg = gain(v); o.connect(vg).connect(pan(p)).connect(lp); o.start(); lfo(.021 + i * .013, v * .45, vg.gain, i * 1.7);
+        lfo(.07 + i * .01, 1.2, o.detune);          // slow chorus drift
+      });
+      const air = src('pink'); const bp = filt('bandpass', 2400, .5); const ag = gain(.035); air.connect(bp).connect(ag).connect(out); lfo(.05, .025, ag.gain);
+    } else if (kind === 'rain') {
+      const n = src('pink'); const hp = filt('highpass', 380); const lp = filt('lowpass', 9000); const shelf = filt('highshelf', 4000); shelf.gain.value = -4;
+      const rg = gain(.5); n.connect(hp).connect(lp).connect(shelf).connect(rg).connect(out); lfo(.19, .06, rg.gain);
+      const r = src('brown'); const rl = filt('lowpass', 220); const rb = gain(.3); r.connect(rl).connect(rb).connect(out);
+      const dropBus = gain(.5); dropBus.connect(out);
+      const drop = () => {                          // individual droplets scattered across the stereo field
+        if (!A.active) return;
+        const t = ac.currentTime + Math.random() * .25;
+        const s = ac.createBufferSource(); s.buffer = noiseBuf('pink'); const f = ac.createBiquadFilter(); f.type = 'bandpass';
+        f.frequency.value = 1800 + Math.random() * 4500; f.Q.value = 6 + Math.random() * 10;
+        const e = ac.createGain(); e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(.25 + Math.random() * .5, t + .002); e.gain.exponentialRampToValueAtTime(.0001, t + .05 + Math.random() * .08);
+        const p = ac.createStereoPanner ? ac.createStereoPanner() : ac.createGain(); if (p.pan) p.pan.value = Math.random() * 2 - 1;
+        s.connect(f).connect(e).connect(p).connect(dropBus); s.start(t, Math.random() * 20, .2);
+      };
+      g.timer = setInterval(() => { for (let i = 0, n = 2 + (Math.random() * 4 | 0); i < n; i++) drop(); }, 120);
+    } else if (kind === 'ocean') {
+      [[.071, -.6, 0], [.053, .6, 4]].forEach(([f, p, ph]) => {  // two wave trains, out of step, left and right
+        const n = src('brown'); const lp = filt('lowpass', 600, .6); const wg = gain(.4); const pp = pan(p);
+        n.connect(lp).connect(wg).connect(pp).connect(out); lfo(f, 520, lp.frequency, ph); lfo(f, .34, wg.gain, ph);
+        const foam = src('pink'); const hp = filt('highpass', 2600); const fg = gain(.035); foam.connect(hp).connect(fg).connect(pp); lfo(f, .03, fg.gain, ph);
+      });
+    }
+    return g;
+  }
+  function buildBin(beatHz) {
+    const ac = A.ctx, out = ac.createGain(); out.gain.value = 0; out.connect(A.master); // dry: reverb would blur the ear-to-ear difference
+    const merger = ac.createChannelMerger(2); merger.connect(out);
+    const carrier = CHAKRAS[st.chakra].hz / 2;
+    const l = ac.createOscillator(), r = ac.createOscillator();
+    l.frequency.value = carrier - beatHz / 2; r.frequency.value = carrier + beatHz / 2;
+    l.connect(merger, 0, 0); r.connect(merger, 0, 1); l.start(); r.start();
+    return { out, nodes: [l, r, merger, out] };
+  }
+  function rebuildAmb() {
+    if (!A.ctx) return;
+    stopGroup(A.amb, 1.5); A.amb = null;
+    if (!A.active || st.amb === 'none') return;
+    A.amb = buildAmb(st.amb); A.amb.out.gain.setTargetAtTime(st.ambVol * .8, A.ctx.currentTime, 1);
+  }
+  function rebuildBin() {
+    if (!A.ctx) return;
+    stopGroup(A.bin, 1.5); A.bin = null;
+    const b = byId(BEATS, st.beat);
+    if (!A.active || !b.hz) return;
+    A.bin = buildBin(b.hz); A.bin.out.gain.setTargetAtTime(st.binVol * .12, A.ctx.currentTime, 1);
+  }
+  function soundOn() {
+    const ac = audioCtx(); if (!ac) return;
+    if (A.active) return;
+    A.active = true;
+    A.master.gain.cancelScheduledValues(ac.currentTime); A.master.gain.setTargetAtTime(1, ac.currentTime, .6);
+    rebuildAmb(); rebuildBin();
+  }
+  function soundOff(fade) {
+    if (!A.ctx) return;
+    A.active = false;
+    stopGroup(A.amb, fade); stopGroup(A.bin, fade); A.amb = A.bin = null;
+  }
+  function soundPause(p) { if (A.ctx && A.active) A.master.gain.setTargetAtTime(p ? 0 : 1, A.ctx.currentTime, .5); }
+  function setVolumes() {
+    if (!A.ctx) return; const t = A.ctx.currentTime;
+    if (A.amb) A.amb.out.gain.setTargetAtTime(st.ambVol * .8, t, .15);
+    if (A.bin) A.bin.out.gain.setTargetAtTime(st.binVol * .12, t, .15);
+  }
+  function bowl(when = 0) {
+    if (!st.bowl) return;
+    const ac = audioCtx(); if (!ac) return;
+    const base = CHAKRAS[st.chakra].hz / 2, t = ac.currentTime + when + .02;
+    const m = ac.createGain(); m.gain.value = .22; m.connect(A.bus);
+    const send = ac.createGain(); send.gain.value = .6; m.connect(send).connect(A.verb);
+    // measured-style inharmonic partials of a Himalayan bowl, each a slowly beating pair spread in stereo
+    [[1, 1, 12], [2.71, .5, 9], [5.18, .28, 6], [8.4, .14, 4], [12.1, .07, 2.6]].forEach(([ratio, amp, len], i) => {
+      [-1, 1].forEach((side) => {
+        const o = ac.createOscillator(); o.frequency.value = base * ratio * (1 + side * (.0009 + i * .0004));
+        const gg = ac.createGain(); gg.gain.setValueAtTime(.0001, t); gg.gain.exponentialRampToValueAtTime(amp * .45, t + .006); gg.gain.exponentialRampToValueAtTime(.0001, t + len);
+        const p = ac.createStereoPanner ? ac.createStereoPanner() : ac.createGain(); if (p.pan) p.pan.value = side * (.15 + i * .1);
+        o.connect(gg).connect(p).connect(m); o.start(t); o.stop(t + len + .05);
+      });
+    });
+    const s = ac.createBufferSource(); s.buffer = noiseBuf('pink');                  // soft mallet strike
+    const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = base * 5; f.Q.value = 1.5;
+    const e = ac.createGain(); e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(.35, t + .003); e.gain.exponentialRampToValueAtTime(.0001, t + .09);
+    s.connect(f).connect(e).connect(m); s.start(t, Math.random() * 20, .15);
+  }
+
+  /* ---------- Wake lock, fullscreen, immersion ---------- */
+  let lock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && 'wakeLock' in navigator && !lock) { lock = await navigator.wakeLock.request('screen'); lock.addEventListener && lock.addEventListener('release', () => { lock = null; }); }
+      if (!on && lock) { await lock.release(); lock = null; }
+    } catch (e) { lock = null; }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && st.screen === 'session' && st.running) keepAwake(true); });
+
+  const root = document.documentElement;
+  const fsReq = root.requestFullscreen || root.webkitRequestFullscreen;
+  const fsEnabled = document.fullscreenEnabled ?? document.webkitFullscreenEnabled;
+  if (!fsReq || fsEnabled === false) el.fsBtn.style.visibility = 'hidden';
+  const inFS = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  function toggleFS() {
+    try {
+      if (inFS()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else { const r = fsReq.call(root); if (r && r.catch) r.catch(() => {}); }
+    } catch (e) {}
+  }
+  const syncFS = () => el.fsBtn.setAttribute('aria-label', inFS() ? 'Выйти из полноэкранного режима' : 'Полноэкранный режим');
+  document.addEventListener('fullscreenchange', syncFS); document.addEventListener('webkitfullscreenchange', syncFS);
+
+  let idleT = null;
+  function wake() {
+    document.body.classList.remove('immersed');
+    clearTimeout(idleT);
+    if (st.screen === 'session' && st.running) {
+      idleT = setTimeout(() => { if (st.screen === 'session' && st.running && el.sheet.hidden) document.body.classList.add('immersed'); }, 5000);
+    }
+  }
+  ['pointerdown', 'pointermove', 'keydown'].forEach((e) => document.addEventListener(e, wake, { passive: true }));
+
+  /* ---------- UI ---------- */
+  function mk(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+  function buildControls() {
+    DURATIONS.forEach((m) => {
+      const b = mk('button', 'pill', m); b.type = 'button'; b.id = 'dur-' + m; b.dataset.v = m;
+      b.setAttribute('aria-label', m + ' ' + minWord(m));
+      b.addEventListener('click', () => { st.minutes = m; store.set('minutes', m); render(); });
+      el.pills.appendChild(b);
+    });
+    CHAKRAS.forEach((c, i) => {
+      const b = mk('button', 'ch'); b.type = 'button'; b.id = 'chakra-' + i;
+      b.setAttribute('aria-label', c.name + ', ' + c.role);
+      const sw = mk('span', 'sw'); sw.style.background = `radial-gradient(circle at 50% 50%, ${c.gold} 0 12%, ${c.c} 30%, ${c.a} 62%, ${c.b} 100%)`;
+      b.appendChild(sw);
+      b.addEventListener('click', () => { st.chakra = i; store.set('chakra', i); applyTheme(); render(); if (A.active) { rebuildAmb(); rebuildBin(); } });
+      el.chakras.appendChild(b);
+    });
+    BREATHS.forEach((br) => {
+      const b = mk('button', 'opt'); b.type = 'button'; b.id = 'breath-' + br.id; b.dataset.v = br.id;
+      b.append(mk('b', null, br.name + ' ' + br.label), mk('small', null, br.note));
+      b.addEventListener('click', () => { st.breath = br.id; store.set('breath', br.id); anim.breath = 0; render(); });
+      el.breathOpts.appendChild(b);
+    });
+    AMBS.forEach((a) => {
+      const b = mk('button', 'seg', a.name); b.type = 'button'; b.id = 'amb-' + a.id; b.dataset.v = a.id;
+      b.addEventListener('click', () => { st.amb = a.id; store.set('amb', a.id); rebuildAmb(); render(); });
+      el.ambOpts.appendChild(b);
+    });
+    BEATS.forEach((be) => {
+      const b = mk('button', 'seg', be.name); b.type = 'button'; b.id = 'beat-' + be.id; b.dataset.v = be.id;
+      b.addEventListener('click', () => { st.beat = be.id; store.set('beat', be.id); rebuildBin(); render(); });
+      el.beatOpts.appendChild(b);
+    });
+    el.ambVol.value = Math.round(st.ambVol * 100); el.binVol.value = Math.round(st.binVol * 100); el.bowlChk.checked = st.bowl;
+    el.ambVol.addEventListener('input', () => { st.ambVol = el.ambVol.value / 100; store.set('ambVol', st.ambVol); setVolumes(); });
+    el.binVol.addEventListener('input', () => { st.binVol = el.binVol.value / 100; store.set('binVol', st.binVol); setVolumes(); });
+    el.bowlChk.addEventListener('change', () => { st.bowl = el.bowlChk.checked; store.set('bowl', st.bowl); });
+  }
+
+  function applyTheme() {
+    const c = CHAKRAS[st.chakra], r = root.style;
+    r.setProperty('--bg', c.bg); r.setProperty('--glow', hexA(c.b, .45)); r.setProperty('--glow2', hexA(c.a, .35));
+    const meta = document.querySelector('meta[name="theme-color"]') || document.head.appendChild(Object.assign(document.createElement('meta'), { name: 'theme-color' }));
+    meta.content = c.bg;
+  }
+
+  let lastScreen = null;
+  const pressed = (box, v) => [...box.children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === String(v))));
+  function render() {
+    const s = st.screen, c = CHAKRAS[st.chakra], br = byId(BREATHS, st.breath), be = byId(BEATS, st.beat), am = byId(AMBS, st.amb);
+    el.setupTitle.hidden = el.setupCtl.hidden = s !== 'setup';
+    el.sessTitle.hidden = el.sessCtl.hidden = s !== 'session';
+    el.doneTitle.hidden = el.doneCtl.hidden = s !== 'done';
+    if (s !== lastScreen) {
+      [el.setupCtl, el.sessCtl, el.doneCtl, el.setupTitle, el.sessTitle, el.doneTitle].forEach((n) => { n.classList.remove('fade'); void n.offsetWidth; n.classList.add('fade'); });
+      lastScreen = s;
+    }
+    pressed(el.pills, st.minutes);
+    [...el.chakras.children].forEach((b, i) => b.setAttribute('aria-pressed', String(i === st.chakra)));
+    pressed(el.breathOpts, st.breath); pressed(el.ambOpts, st.amb); pressed(el.beatOpts, st.beat);
+    el.chName.innerHTML = '';
+    el.chName.append(c.name + ' ', mk('span', null, '· ' + c.role + ' · ' + c.hz + ' Гц'));
+    el.summaryBtn.textContent = br.name + ' ' + br.label + ' · ' + am.name + ' · ' + (be.hz ? be.name : 'без бинаурала');
+    el.summaryBtn.setAttribute('aria-label', 'Настройки: ' + el.summaryBtn.textContent);
+    el.beatNote.textContent = be.note + (be.hz ? ' Слушай в наушниках: каждое ухо получает свой тон. Основа — частота чакры ' + c.name + ' (' + c.hz + ' Гц) октавой ниже.' : '');
+    if (A.rate) el.qualityNote.textContent = 'Звук синтезируется в реальном времени: ' + (A.rate / 1000).toLocaleString('ru-RU') + ' кГц, 32-bit float' + (A.rate < 96000 ? ' (96 кГц это устройство не отдаёт, работаем на максимуме, что есть)' : '') + '.';
+    el.previewBtn.hidden = s !== 'setup';
+    el.previewBtn.textContent = st.preview ? 'Остановить' : 'Послушать';
+    if (s === 'setup') { el.big.textContent = st.minutes + ':00'; el.sub.textContent = 'длительность'; }
+    if (s === 'session') {
+      el.meta.textContent = c.name + ' · ' + br.name + ' ' + br.label;
+      el.pauseBtn.textContent = st.running ? 'Пауза' : 'Дальше';
+      el.sub.textContent = st.running ? 'осталось' : 'пауза';
+    }
+    if (s === 'done') {
+      el.big.textContent = st.minutes + ':00'; el.sub.textContent = 'в тишине';
+      el.doneText.textContent = st.minutes + ' ' + minWord(st.minutes) + ' наедине с собой. Побудь в этом состоянии ещё немного.';
+    }
+    wake();
+    requestAnimationFrame(measure);
+  }
+
+  const remaining = () => (st.running ? st.endAt - Date.now() : st.remainMs);
+
+  function start() {
+    audioCtx();
+    st.screen = 'session'; st.running = true; st.endAt = Date.now() + st.minutes * 60000; st.remainMs = st.minutes * 60000;
+    st.preview = false;
+    anim.breath = 0;
+    bowl(0); soundOn();
+    keepAwake(true); render(); tick();
+  }
+  function togglePause() {
+    if (st.screen !== 'session') return;
+    if (st.running) { st.remainMs = st.endAt - Date.now(); st.running = false; keepAwake(false); soundPause(true); }
+    else { st.endAt = Date.now() + st.remainMs; st.running = true; keepAwake(true); soundPause(false); }
+    render();
+  }
+  function finish() {
+    st.screen = 'done'; st.running = false; st.remainMs = 0;
+    soundOff(5); bowl(0); bowl(2.6);
+    keepAwake(false); render();
+  }
+  function toSetup() { st.screen = 'setup'; st.running = false; soundOff(1.5); keepAwake(false); render(); }
+  function tick() {
+    if (st.screen !== 'session') return;
+    const ms = remaining();
+    if (ms <= 0) { finish(); return; }
+    const txt = fmt(ms); if (el.big.textContent !== txt) el.big.textContent = txt;
+  }
+  setInterval(tick, 250);
+
+  let returnFocus = null;
+  function openSheet() { returnFocus = document.activeElement; el.sheet.hidden = false; document.body.classList.remove('immersed'); el.closeBtn.focus(); }
+  function closeSheet() {
+    el.sheet.hidden = true;
+    if (st.preview) { st.preview = false; if (st.screen === 'setup') soundOff(1.2); }
+    render(); if (returnFocus && returnFocus.focus) returnFocus.focus();
+  }
+  el.setBtn.addEventListener('click', openSheet);
+  el.summaryBtn.addEventListener('click', openSheet);
+  el.closeBtn.addEventListener('click', closeSheet);
+  el.doneBtn.addEventListener('click', closeSheet);
+  el.sheet.addEventListener('click', (e) => { if (e.target === el.sheet) closeSheet(); });
+  el.previewBtn.addEventListener('click', () => {
+    st.preview = !st.preview;
+    if (st.preview) soundOn(); else soundOff(1.2);
+    render();
+  });
+
+  el.startBtn.addEventListener('click', start);
+  el.pauseBtn.addEventListener('click', togglePause);
+  el.stopBtn.addEventListener('click', toSetup);
+  el.againBtn.addEventListener('click', toSetup);
+  el.fsBtn.addEventListener('click', toggleFS);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !el.sheet.hidden) { closeSheet(); return; }
+    if (e.code !== 'Space' || st.screen !== 'session' || !el.sheet.hidden) return;
+    if (e.target && /^(BUTTON|INPUT)$/.test(e.target.tagName)) return;
+    e.preventDefault(); togglePause();
+  });
+
+  /* ---------- Breathing ---------- */
+  function breathState(t) {
+    const ph = byId(BREATHS, st.breath).ph;
+    const cyc = ph[0] + ph[1] + ph[2] + ph[3];
+    let x = t % cyc;
+    for (let i = 0; i < 4; i++) {
+      if (ph[i] > 0 && x < ph[i]) {
+        const f = x / ph[i], e = .5 - .5 * Math.cos(Math.PI * f);
+        const level = i === 0 ? e : i === 1 ? 1 : i === 2 ? 1 - e : 0;
+        return { i, level, count: Math.floor(x) + 1 };
+      }
+      x -= ph[i];
+    }
+    return { i: 0, level: 0, count: 1 };
+  }
+
+  /* ---------- WebGL: scene shader + bloom (bright pass → blur at 1/4 and 1/8 → screen blend) ---------- */
+  const VERT = 'attribute vec2 p;varying vec2 v;void main(){v=p*.5+.5;gl_Position=vec4(p,0.,1.);}';
+  const SCENE = `
+precision highp float;
+uniform vec2 uRes; uniform vec2 uCenter; uniform float uRadius;
+uniform float uTime; uniform float uWall; uniform float uBreath; uniform float uProgress; uniform float uShowRing; uniform float uPx; uniform float uBloom; uniform float uVis;
+uniform float uPetals; uniform float uOuter; uniform float uSeg; uniform float uGeom;
+uniform vec3 uBg; uniform vec3 uA; uniform vec3 uB; uniform vec3 uC; uniform vec3 uGold;
+const float TAU = 6.2831853;
+float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
+vec2 hash2(vec2 p){ return vec2(hash(p), hash(p + 17.31)); }
+float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x), mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x), f.y); }
+float fbm(vec2 p){ float v=0., a=.5; for(int i=0;i<4;i++){ v+=a*noise(p); p=p*2.03+vec2(1.7,9.2); a*=.5; } return v; }
+vec3 hueShift(vec3 c, float h){ const vec3 k=vec3(.57735); float ca=cos(h); return c*ca + cross(k,c)*sin(h) + k*dot(k,c)*(1.-ca); }
+float sdBox(vec2 p, vec2 b){ vec2 d = abs(p)-b; return length(max(d,0.)) + min(max(d.x,d.y),0.); }
+float sdTri(vec2 p, float r){ const float k = 1.7320508; p.x = abs(p.x) - r; p.y = p.y + r/k;
+  if (p.x + k*p.y > 0.) p = vec2(p.x - k*p.y, -k*p.x - p.y)/2.; p.x -= clamp(p.x, -2.*r, 0.); return -length(p)*sign(p.y); }
+
+vec3 stars(vec2 s, float cells, float size, float density, vec2 drift){
+  vec2 g = s*cells + drift; vec2 id = floor(g), f = fract(g);
+  float h = hash(id); if (h > density) return vec3(0.);
+  vec2 pos = .2 + .6*hash2(id + 3.7);
+  float d = length(f - pos) * uRes.y / (cells * uPx);
+  float b = .35 + .65*hash(id + 9.1);
+  vec3 tint = mix(vec3(1.), mix(uC, uGold, hash(id + 5.3)), .35);
+  return tint * b * exp(-d*d / (size*size));
+}
+
+float yantra(vec2 q){
+  float g = uGeom, d = 1e3;
+  if (g < .5) return 0.;
+  else if (g < 1.5) d = min(abs(sdBox(q, vec2(.3))), abs(sdBox(q, vec2(.2))));
+  else if (g < 2.5) d = abs(max(length(q) - .3, -(length(q - vec2(0., .12)) - .25)));
+  else if (g < 3.5) d = abs(sdTri(vec2(q.x, -q.y), .3));
+  else if (g < 4.5) d = min(abs(sdTri(q, .28)), abs(sdTri(vec2(q.x, -q.y), .28)));
+  else if (g < 5.5) d = min(abs(sdTri(vec2(q.x, -q.y), .32)), abs(length(q) - .14));
+  else d = min(abs(sdTri(vec2(q.x, -q.y), .16)), abs(length(q) - .3));
+  return exp(-d*85.);
+}
+
+vec3 mandala(vec2 m, float T){
+  float r = length(m);
+  float a = atan(m.y, m.x);
+  float warp = fbm(vec2(r*3. - T*.15, a*1.5 + T*.02)) - .5;
+
+  float pet1 = abs(cos(a*uPetals*.5 + T*.3 + warp*.7));
+  float d1 = r - (.26 + .22*pow(pet1, .6));
+  float g1 = exp(-abs(d1)*26.) + smoothstep(.02, -.12, d1)*.3;
+
+  float pet2 = abs(cos(a*uOuter*.5 - T*.2 + warp*.4));
+  float g2 = exp(-abs(r - (.64 + .09*pet2))*38.);
+
+  float seg = TAU/uSeg;
+  float ka = abs(mod(a + T*.05 + warp*.2, seg) - seg*.5);
+  vec2 kp = vec2(cos(ka), sin(ka))*r;
+  float lotus = exp(-abs(length(kp - vec2(.52, 0.)) - .15)*42.);
+  float seg2 = TAU/(uSeg*2.);
+  float kb = abs(mod(a - T*.08, seg2) - seg2*.5);
+  vec2 kq = vec2(cos(kb), sin(kb))*r;
+  float fil = exp(-abs(length(kq - vec2(.36, 0.)) - .06)*90.);
+
+  float ripple = pow(.5 + .5*sin(r*46. - T*1.5 + warp*5.), 6.) * smoothstep(.95, .3, r) * smoothstep(.05, .22, r);
+
+  float fol = 0.;
+  for (int i = 0; i < 6; i++) { float an = float(i)*1.0472 - T*.12; vec2 c = vec2(cos(an), sin(an))*.24; fol += exp(-abs(length(m - c) - .24)*70.); }
+  if (uGeom > .5) fol *= .45; // let the yantra lead in the centre
+
+  float da = mod(a + T*.07, TAU/36.) - TAU/72.;
+  float dots = exp(-length(vec2(r - .88, da*r))*85.);
+  float core = exp(-r*8.)*1.3;
+
+  float t1 = .5 + .5*sin(a*3. + r*6. - T*.4 + warp*3.);
+  vec3 pal = mix(mix(uA, uB, t1), uC, smoothstep(.4, .9, r)*.6);
+  float open = uBloom;
+  vec3 col = pal*(g1*.9 + ripple*.4) + uC*g2*.85*open + mix(uB, uGold, .4)*lotus*.75*open
+           + mix(uGold, uC, .5)*fil*.6*open + uGold*(fol*.5 + dots*1.3) + mix(uGold, vec3(1.), .5)*core
+           + mix(uGold, vec3(1.), .45)*yantra(m)*1.1;
+  return col * smoothstep(1.02, .84, r);
+}
+
+void main(){
+  vec2 frag = gl_FragCoord.xy;
+  vec2 uv = frag/uRes;
+  float W = uWall, T = uTime;
+  vec2 s = frag / uRes.y;
+
+  vec2 q = uv*vec2(uRes.x/uRes.y, 1.)*1.7;
+  float n1 = fbm(q + vec2(W*.03, -W*.02));
+  float n2 = fbm(q*1.3 + n1*1.9 + vec2(-W*.025, W*.018));
+  vec3 col = uBg;
+  col += uA * smoothstep(.35, .95, n2) * .38;
+  col += uB * smoothstep(.45, 1., fbm(q*.8 + n2 + 3.1)) * .32;
+  col += uC * smoothstep(.5, 1., n1*n2*1.7) * .16;
+
+  col += stars(s, 70., .9, .10, vec2(W*.004, W*.002)) * .55;
+  col += stars(s, 38., 1.2, .12, vec2(W*.008, W*.003)) * .8;
+  col += stars(s, 16., 1.6, .10, vec2(W*.014, W*.005));
+
+  vec2 p = (frag - uCenter) / uRadius;
+  float R = length(p);
+  float pa = atan(p.y, p.x);
+  float inhale = (uBreath - .9) / .12;
+
+  float rays = pow(.5 + .5*cos(pa*18. + sin(T*.2)*.8), 10.) + .6*pow(.5 + .5*cos(pa*7. - T*.13), 14.);
+  col += mix(uA, uGold, .45) * rays * smoothstep(.55, 1.05, R) * exp(-(R - 1.)*1.4) * (.08 + .16*inhale) * uVis;
+
+  vec2 m = p / (uBreath * (.55 + .45*uVis));
+  float ca = .012 + .006*inhale;
+  vec3 mR = mandala(m * (1. - ca), T);
+  vec3 mG = mandala(m, T);
+  vec3 mB = mandala(m * (1. + ca), T);
+  vec3 mand = vec3(mR.r, mG.g, mB.b) * uVis;
+  mand = hueShift(mand, sin(W*.11)*.5);
+  mand = 1. - exp(-mand*1.5);
+  col += mix(uA, uB, .5) * exp(-R*2.3) * (.25 + .15*inhale);
+  col += mix(uB, uGold, .3) * exp(-R*R*9.) * .18 * inhale;
+  col += mand;
+
+  float rp = abs(R - .975) * uRadius / uPx;
+  col += vec3(.13) * smoothstep(1.1, 0., rp);
+  float ang = mod(atan(p.x, p.y), TAU) / TAU;
+  float on = step(ang, uProgress) * uShowRing;
+  col += uGold * (smoothstep(2., .4, rp) + exp(-rp*.22)*.35) * on;
+  vec2 tip = vec2(sin(uProgress*TAU), cos(uProgress*TAU)) * .975;
+  float bead = length(p - tip) * uRadius / uPx;
+  col += mix(uGold, vec3(1.), .5) * (exp(-bead*bead*.08) + exp(-bead*.18)*.35) * uShowRing * step(.001, uProgress) * step(uProgress, .999);
+
+  gl_FragColor = vec4(col, 1.);
+}`;
+  const BRIGHT = `precision mediump float;varying vec2 v;uniform sampler2D t;uniform vec2 px;uniform float th;
+void main(){ vec3 c = (texture2D(t, v + px*vec2(-1.,-1.)).rgb + texture2D(t, v + px*vec2(1.,-1.)).rgb + texture2D(t, v + px*vec2(-1.,1.)).rgb + texture2D(t, v + px*vec2(1.,1.)).rgb) * .25;
+  float l = max(c.r, max(c.g, c.b)); gl_FragColor = vec4(c * smoothstep(th, th + .4, l), 1.); }`;
+  const BLUR = `precision mediump float;varying vec2 v;uniform sampler2D t;uniform vec2 d;
+void main(){ vec3 c = texture2D(t, v).rgb * .227027;
+  c += (texture2D(t, v + d*1.3846).rgb + texture2D(t, v - d*1.3846).rgb) * .316216;
+  c += (texture2D(t, v + d*3.2308).rgb + texture2D(t, v - d*3.2308).rgb) * .070270; gl_FragColor = vec4(c, 1.); }`;
+  const COMP = `precision highp float;varying vec2 v;uniform sampler2D s;uniform sampler2D b1;uniform sampler2D b2;uniform float k;uniform vec2 res;
+float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
+void main(){ vec3 c = texture2D(s, v).rgb;
+  vec3 b = (texture2D(b1, v).rgb*.9 + texture2D(b2, v).rgb*1.2) * k;
+  c = 1. - (1. - c)*(1. - min(b, vec3(1.)));
+  c *= 1. - .38*pow(length(v - .5)*1.25, 2.);
+  c += (hash(v*res) - .5) / 255.;
+  gl_FragColor = vec4(c, 1.); }`;
+
+  const canvas = el.sky;
+  const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, powerPreference: 'high-performance' }) || canvas.getContext('experimental-webgl');
+  const anim = { t: 0, breath: 0, speed: 1, spin: 1, wall: 0, bloom: 1, vis: 1, shown: st.chakra };
+  let P = null, W = 0, H = 0, DPR = 1, quality = 1, center = [0, 0], radius = 100, T = {};
+
+  function program(fs) {
+    const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; } return s; };
+    const vs = sh(gl.VERTEX_SHADER, VERT), f = sh(gl.FRAGMENT_SHADER, fs); if (!vs || !f) return null;
+    const pr = gl.createProgram(); gl.attachShader(pr, vs); gl.attachShader(pr, f); gl.bindAttribLocation(pr, 0, 'p'); gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(pr)); return null; }
+    const cache = {};
+    return { pr, u: (n) => (n in cache ? cache[n] : (cache[n] = gl.getUniformLocation(pr, n))) };
+  }
+  if (gl) {
+    const progs = { scene: program(SCENE), bright: program(BRIGHT), blur: program(BLUR), comp: program(COMP) };
+    if (progs.scene && progs.bright && progs.blur && progs.comp) {
+      P = progs;
+      const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    }
+  }
+  if (!P) document.body.classList.add('nogl');
+
+  function target(w, h) {
+    w = Math.max(1, w | 0); h = Math.max(1, h | 0);
+    const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { tex, fb, w, h };
+  }
+  function freeTargets() { Object.values(T).forEach((t) => { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fb); }); T = {}; }
+
+  function resize() {
+    DPR = Math.min(1.5, window.devicePixelRatio || 1) * quality;
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = Math.max(1, Math.round(W * DPR)); canvas.height = Math.max(1, Math.round(H * DPR));
+    if (P) {
+      freeTargets();
+      const w = canvas.width, h = canvas.height;
+      T = { S: target(w, h), A1: target(w / 4, h / 4), A2: target(w / 4, h / 4), B1: target(w / 8, h / 8), B2: target(w / 8, h / 8) };
+    }
+    measure();
+  }
+  function measure() {
+    const b = el.slot.getBoundingClientRect();
+    center = [(b.left + b.width / 2) * DPR, (H - (b.top + b.height / 2)) * DPR];
+    radius = (b.width / 2) * DPR;
+  }
+  window.addEventListener('resize', resize);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(measure);
+  resize();
+
+  const rgb = (h) => { const n = parseInt(h.slice(1), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
+  const CH_RGB = CHAKRAS.map((c) => ({ bg: rgb(c.bg), a: rgb(c.a), b: rgb(c.b), c: rgb(c.c), gold: rgb(c.gold) }));
+  const cur = JSON.parse(JSON.stringify(CH_RGB[st.chakra]));
+
+  function pass(p, out, fn) {
+    gl.useProgram(p.pr);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, out ? out.fb : null);
+    gl.viewport(0, 0, out ? out.w : canvas.width, out ? out.h : canvas.height);
+    fn(p); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  function bind(p, name, unit, t) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t.tex); gl.uniform1i(p.u(name), unit); }
+  function blur(src, tmp, spread) {
+    pass(P.blur, tmp, (p) => { bind(p, 't', 0, src); gl.uniform2f(p.u('d'), spread / src.w, 0); });
+    pass(P.blur, src, (p) => { bind(p, 't', 0, tmp); gl.uniform2f(p.u('d'), 0, spread / tmp.h); });
+  }
+
+  let last = performance.now(), slow = 0, fast = 0;
+  function frame(now) {
+    const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    if (dt > 0.028) { slow++; fast = 0; } else if (dt < 0.018) { fast++; slow = 0; }
+    if (slow > 30 && quality > 0.45) { quality *= 0.8; slow = 0; resize(); }
+    if (fast > 240 && quality < 1) { quality = Math.min(1, quality * 1.15); fast = 0; resize(); }
+
+    const target = st.screen === 'session' && !st.running ? 0 : 1;
+    anim.speed += (target - anim.speed) * Math.min(1, dt * 2.5);
+    const k = reduced ? 0.15 : 1;
+    anim.breath += dt * anim.speed;
+    const bs = breathState(anim.breath);
+    const spinTarget = bs.i === 1 || bs.i === 3 ? 0.2 : 1; // the mandala nearly stills on breath holds
+    anim.spin += (spinTarget - anim.spin) * Math.min(1, dt * 1.5);
+    anim.t += dt * anim.speed * anim.spin * k;
+    anim.wall += dt * k;
+
+    if (anim.shown !== st.chakra) { anim.vis = Math.max(0, anim.vis - dt * 2.2); if (anim.vis <= 0.01) anim.shown = st.chakra; }
+    else anim.vis = Math.min(1, anim.vis + dt * 1.3);
+
+    if (P) {
+      const tgt = CH_RGB[st.chakra], mix = Math.min(1, dt * 2);
+      ['bg', 'a', 'b', 'c', 'gold'].forEach((key) => { for (let i = 0; i < 3; i++) cur[key][i] += (tgt[key][i] - cur[key][i]) * mix; });
+      let progress = 0;
+      if (st.screen === 'done') progress = 1;
+      else if (st.screen === 'session') progress = Math.min(1, 1 - remaining() / (st.minutes * 60000));
+      const bloomTarget = st.screen === 'session' ? 0.35 + 0.65 * progress : 1;
+      anim.bloom += (bloomTarget - anim.bloom) * Math.min(1, dt * 0.8);
+      const geo = CHAKRAS[anim.shown];
+
+      pass(P.scene, T.S, (p) => {
+        gl.uniform2f(p.u('uRes'), T.S.w, T.S.h);
+        gl.uniform2f(p.u('uCenter'), center[0], center[1]);
+        gl.uniform1f(p.u('uRadius'), radius);
+        gl.uniform1f(p.u('uTime'), anim.t);
+        gl.uniform1f(p.u('uWall'), anim.wall);
+        gl.uniform1f(p.u('uBreath'), 0.9 + 0.12 * bs.level);
+        gl.uniform1f(p.u('uProgress'), progress);
+        gl.uniform1f(p.u('uShowRing'), st.screen === 'setup' ? 0 : 1);
+        gl.uniform1f(p.u('uPx'), DPR);
+        gl.uniform1f(p.u('uBloom'), anim.bloom);
+        gl.uniform1f(p.u('uVis'), .5 - .5 * Math.cos(Math.PI * anim.vis));
+        gl.uniform1f(p.u('uPetals'), geo.petals); gl.uniform1f(p.u('uOuter'), geo.outer);
+        gl.uniform1f(p.u('uSeg'), geo.seg); gl.uniform1f(p.u('uGeom'), geo.geom);
+        gl.uniform3fv(p.u('uBg'), cur.bg); gl.uniform3fv(p.u('uA'), cur.a); gl.uniform3fv(p.u('uB'), cur.b); gl.uniform3fv(p.u('uC'), cur.c); gl.uniform3fv(p.u('uGold'), cur.gold);
+      });
+      pass(P.bright, T.A1, (p) => { bind(p, 't', 0, T.S); gl.uniform2f(p.u('px'), 1 / T.S.w, 1 / T.S.h); gl.uniform1f(p.u('th'), 0.58); });
+      blur(T.A1, T.A2, 1);
+      pass(P.bright, T.B1, (p) => { bind(p, 't', 0, T.A1); gl.uniform2f(p.u('px'), 1 / T.A1.w, 1 / T.A1.h); gl.uniform1f(p.u('th'), -1); });
+      blur(T.B1, T.B2, 1.6);
+      pass(P.comp, null, (p) => {
+        bind(p, 's', 0, T.S); bind(p, 'b1', 1, T.A1); bind(p, 'b2', 2, T.B1);
+        gl.uniform1f(p.u('k'), 0.45 + 0.2 * bs.level);
+        gl.uniform2f(p.u('res'), canvas.width, canvas.height);
+      });
+    }
+
+    if (st.screen === 'session') {
+      const word = !st.running ? 'Пауза' : PHASE_WORDS[bs.i] + ' · ' + bs.count;
+      if (el.cue.textContent !== word) el.cue.textContent = word;
+      const cls = 'cue' + (st.running ? ' p' + bs.i : '');
+      if (el.cue.className !== cls) el.cue.className = cls;
+      const hint = st.running ? 'Следуй за дыханием мандалы' : 'Вернись, когда будешь готов';
+      if (el.cueHint.textContent !== hint) el.cueHint.textContent = hint;
+    }
+    requestAnimationFrame(frame);
+  }
+
+  buildControls(); applyTheme(); render(); syncFS();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body>
+</html>
