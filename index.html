@@ -975,15 +975,19 @@ void main(){ vec3 c = texture2D(s, v).rgb;
 
   // Adaptive resolution aimed at the display's own refresh (60/120/144 Hz), estimated as the 10th-percentile frame interval
   // of each half-second window: drop resolution while we can't keep up, creep back up after a cooldown once we can.
-  const PF = { dts: [], hz: 60, ok: 0, cool: 0 };
+  // fps is a trimmed mean (worst 10% of frames dropped) so one-off hitches — shader compiles, audio buffers, GC — don't count,
+  // and the first 3 s after load are ignored entirely.
+  const PF = { dts: [], hz: 60, ok: 0, cool: 0, grace: 3 };
   function adapt(dt) {
-    PF.dts.push(dt); PF.cool -= dt;
+    PF.dts.push(dt); PF.cool -= dt; PF.grace -= dt;
     const span = PF.dts.reduce((a, b) => a + b, 0);
     if (span < 0.5) return;
     const sorted = PF.dts.slice().sort((a, b) => a - b);
-    PF.hz = 1 / Math.max(sorted[Math.floor(sorted.length * 0.1)], 1 / 240);
-    const fps = PF.dts.length / span;
     PF.dts.length = 0;
+    if (PF.grace > 0) return;
+    PF.hz = 1 / Math.max(sorted[Math.floor(sorted.length * 0.1)], 1 / 240);
+    const kept = sorted.slice(0, Math.ceil(sorted.length * 0.9));
+    const fps = kept.length / kept.reduce((a, b) => a + b, 0);
     if (fps < PF.hz * 0.85 && quality > 0.35) { quality *= 0.88; PF.ok = 0; PF.cool = 8; resize(); }
     else if (fps > PF.hz * 0.96 && quality < 1) { if (++PF.ok >= 6 && PF.cool <= 0) { quality = Math.min(1, quality * 1.08); PF.ok = 0; resize(); } }
     else PF.ok = 0;
