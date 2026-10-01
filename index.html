@@ -786,7 +786,7 @@ void main(){ vec3 c = texture2D(s, v).rgb;
   gl_FragColor = vec4(c, 1.); }`;
 
   const canvas = el.sky;
-  const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, powerPreference: 'high-performance' }) || canvas.getContext('experimental-webgl');
+  const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, desynchronized: true, powerPreference: 'high-performance' }) || canvas.getContext('experimental-webgl');
   const anim = { t: 0, breath: 0, speed: 1, spin: 1, wall: 0, bloom: 1, vis: 1, shown: st.chakra };
   const weakDevice = matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 4) <= 4;
   let P = null, W = 0, H = 0, DPR = 1, quality = weakDevice ? 0.7 : 1, center = [0, 0], radius = 100, T = {};
