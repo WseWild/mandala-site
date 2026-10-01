@@ -858,10 +858,29 @@ void main(){ vec3 c = (texture2D(t, v + px*vec2(-1.,-1.)).rgb + texture2D(t, v +
 void main(){ vec3 c = texture2D(t, v).rgb * .227027;
   c += (texture2D(t, v + d*1.3846).rgb + texture2D(t, v - d*1.3846).rgb) * .316216;
   c += (texture2D(t, v + d*3.2308).rgb + texture2D(t, v - d*3.2308).rgb) * .070270; gl_FragColor = vec4(c, 1.); }`;
-  const COMP = `precision highp float;varying vec2 v;uniform sampler2D s;uniform sampler2D b1;uniform sampler2D b2;uniform float k;uniform vec2 res;
+  // Volumetric light scattering (GPU Gems 3, ch. 13): march each pixel toward the lotus centre summing the bright pass with decay,
+  // so the lit structure (petal rims, yantra lines, beads) throws shafts outward that follow its pattern. The core is left out of
+  // the emitters (a bright disc only blurs into a blob that washes the centre out), stars and sparks too (they'd streak toward the
+  // centre), and the shafts are only added outside the lotus so they never sit on top of it.
+  const RAYS = `precision mediump float;varying vec2 v;uniform sampler2D t;uniform vec2 c;uniform float aspect, rad, len;
+float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
+float dist(vec2 uv){ return length((uv - c)*vec2(aspect, 1.))/rad; }
+void main(){
+  vec2 d = (v - c) * len / 40.;
+  vec2 uv = v - d*hash(v*917.3);                // jittered start trades banding for fine grain
+  vec3 acc = vec3(0.); float w = 1.;
+  for (int i = 0; i < 40; i++) {
+    uv -= d;
+    float r = dist(uv);
+    acc += texture2D(t, uv).rgb * smoothstep(.3, .5, r) * smoothstep(1.3, .95, r) * w;
+    w *= .955;
+  }
+  gl_FragColor = vec4(acc / 40. * smoothstep(.55, 1., dist(v)), 1.);
+}`;
+  const COMP = `precision highp float;varying vec2 v;uniform sampler2D s;uniform sampler2D b1;uniform sampler2D b2;uniform sampler2D b3;uniform float k, kr;uniform vec2 res;
 float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
 void main(){ vec3 c = texture2D(s, v).rgb;
-  vec3 b = (texture2D(b1, v).rgb*.9 + texture2D(b2, v).rgb*1.2) * k;
+  vec3 b = (texture2D(b1, v).rgb*.9 + texture2D(b2, v).rgb*1.2) * k + texture2D(b3, v).rgb * kr;
   c = 1. - (1. - c)*(1. - min(b, vec3(1.)));
   c *= 1. - .38*pow(length(v - .5)*1.25, 2.);
   c += (hash(v*res) - .5) / 255.;
@@ -946,8 +965,8 @@ void main(){ float r = length(gl_PointCoord - .5)*4.;   // sprite is 4x the core
     return { pr, u: (n) => (n in cache ? cache[n] : (cache[n] = gl.getUniformLocation(pr, n))) };
   }
   if (gl) {
-    const progs = { scene: program(SCENE), bright: program(BRIGHT), blur: program(BLUR), comp: program(COMP) };
-    if (progs.scene && progs.bright && progs.blur && progs.comp) {
+    const progs = { scene: program(SCENE), bright: program(BRIGHT), blur: program(BLUR), rays: program(RAYS), comp: program(COMP) };
+    if (progs.scene && progs.bright && progs.blur && progs.rays && progs.comp) {
       P = progs;
       quadBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
@@ -1171,9 +1190,16 @@ void main(){ float r = length(gl_PointCoord - .5)*4.;   // sprite is 4x the core
         pass(P.bright, T.B1, (p) => { bind(p, 't', 0, T.A1); gl.uniform2f(p.u('px'), 1 / T.A1.w, 1 / T.A1.h); gl.uniform1f(p.u('th'), -1); });
         blur(T.B1, T.B2, 1.6);
       }
+      pass(P.rays, T.A2, (p) => {                                 // A2 is free again once the bloom blur is done
+        bind(p, 't', 0, T.A1);
+        gl.uniform2f(p.u('c'), center[0] / canvas.width, center[1] / canvas.height);
+        gl.uniform1f(p.u('aspect'), canvas.width / canvas.height); gl.uniform1f(p.u('rad'), radius / canvas.height);
+        gl.uniform1f(p.u('len'), 0.6 + 0.15 * bs.level);
+      });
       pass(P.comp, null, (p) => {
-        bind(p, 's', 0, T.S); bind(p, 'b1', 1, T.A1); bind(p, 'b2', 2, highQ ? T.B1 : T.A1);
+        bind(p, 's', 0, T.S); bind(p, 'b1', 1, T.A1); bind(p, 'b2', 2, highQ ? T.B1 : T.A1); bind(p, 'b3', 3, T.A2);
         gl.uniform1f(p.u('k'), 0.45 + 0.2 * bs.level + 0.15 * au[0]);
+        gl.uniform1f(p.u('kr'), (2.2 + 1.6 * bs.level + 0.8 * au[0]) * anim.vis);
         gl.uniform2f(p.u('res'), canvas.width, canvas.height);
       });
     }
