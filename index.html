@@ -992,8 +992,10 @@ void main(){ vec3 c = texture2D(s, v).rgb;
   let last = performance.now();
   let dbgFrames = 0, dbgTime = 0;
   function frame(now) {
-    const dt = Math.min(0.1, (now - last) / 1000); last = now;
-    adapt(dt);
+    const raw = (now - last) / 1000, dt = Math.min(0.1, raw); last = now;
+    // Chrome drops to 1 frame/s while the window is covered or minimised; that's the browser pausing us, not the GPU
+    // falling behind, so drop the current measuring window instead of letting the mix of 1 s and 8 ms frames read as "slow".
+    if (raw > 0.2) PF.dts.length = 0; else adapt(dt);
     const au = readAudio(dt);
 
     if (dbgEl) {
