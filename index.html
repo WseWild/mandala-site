@@ -658,6 +658,7 @@ uniform float uTime; uniform float uWall; uniform float uBreath; uniform float u
 uniform float uPetals; uniform float uOuter; uniform float uGeom;
 uniform vec3 uBg; uniform vec3 uA; uniform vec3 uB; uniform vec3 uC; uniform vec3 uGold;
 uniform vec3 uAudio;   // x low, y mid, z high: each 0..1, normalised to the recent dynamic range
+uniform float uSkyPass; uniform vec2 uFragScale; uniform sampler2D uSky;
 const float TAU = 6.2831853;
 float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
 vec2 hash2(vec2 p){ return vec2(hash(p), hash(p + 17.31)); }
@@ -795,32 +796,36 @@ vec3 lotus(vec2 p, float inhale){
 }
 
 void main(){
-  vec2 frag = gl_FragCoord.xy;
+  vec2 frag = gl_FragCoord.xy * uFragScale;   // full-res pixel coords in both passes
   vec2 uv = frag/uRes;
   float W = uWall, T = uTime;
   vec2 s = frag / uRes.y;
-
-  vec2 q = uv*vec2(uRes.x/uRes.y, 1.)*1.7;
-  float n1 = fbm(q + vec2(W*.03, -W*.02));
-  float n2 = fbm(q*1.3 + n1*1.9 + vec2(-W*.025, W*.018));
-  vec3 col = uBg;
-  col += uA * smoothstep(.35, .95, n2) * .38;
-  col += uB * smoothstep(.45, 1., fbm(q*.8 + n2 + 3.1)) * .32;
-  col += uC * smoothstep(.5, 1., n1*n2*1.7) * .16;
-
-  col += stars(s, 110., .55, .14, vec2(W*.002, W*.001), .3) * .32;
-  col += stars(s, 70., .9, .10, vec2(W*.004, W*.002), .45) * .55;
-  col += stars(s, 38., 1.2, .12, vec2(W*.008, W*.003), .55) * .8;
-  col += stars(s, 16., 1.6, .10, vec2(W*.014, W*.005), .65);
-
   vec2 p = (frag - uCenter) / uRadius;
   float R = length(p);
   float pa = atan(p.y, p.x);
   float inhale = (uBreath - .9) / .12;
 
-  float haloN = .7 + .3*fbm(vec2(pa*1.3 + T*.04, R*2. - T*.06));   // organic drift instead of a fixed spike count
-  float halo = smoothstep(.55, 1.08, R) * exp(-(R - 1.)*1.5) * haloN;
-  col += mix(uA, uGold, .45) * halo * (.09 + .17*inhale) * uVis;
+  // Sky pass (quarter res): the nebula and halo are smooth, so their ~64 hashes per pixel are paid on 1/16 of the pixels.
+  if (uSkyPass > .5) {
+    vec2 q = uv*vec2(uRes.x/uRes.y, 1.)*1.7;
+    float n1 = fbm(q + vec2(W*.03, -W*.02));
+    float n2 = fbm(q*1.3 + n1*1.9 + vec2(-W*.025, W*.018));
+    vec3 sky = uBg;
+    sky += uA * smoothstep(.35, .95, n2) * .38;
+    sky += uB * smoothstep(.45, 1., fbm(q*.8 + n2 + 3.1)) * .32;
+    sky += uC * smoothstep(.5, 1., n1*n2*1.7) * .16;
+    float haloN = .7 + .3*fbm(vec2(pa*1.3 + T*.04, R*2. - T*.06));   // organic drift instead of a fixed spike count
+    float halo = smoothstep(.55, 1.08, R) * exp(-(R - 1.)*1.5) * haloN;
+    sky += mix(uA, uGold, .45) * halo * (.09 + .17*inhale) * uVis;
+    gl_FragColor = vec4(sky, 1.);
+    return;
+  }
+  vec3 col = texture2D(uSky, uv).rgb;
+
+  col += stars(s, 110., .55, .14, vec2(W*.002, W*.001), .3) * .32;
+  col += stars(s, 70., .9, .10, vec2(W*.004, W*.002), .45) * .55;
+  col += stars(s, 38., 1.2, .12, vec2(W*.008, W*.003), .55) * .8;
+  col += stars(s, 16., 1.6, .10, vec2(W*.014, W*.005), .65);
 
   vec2 m = p / (uBreath * (.55 + .45*uVis));
   m *= 1. + uAudio.y*.016*sin(length(m)*28. - uWall*9.);   // mids send a faint ripple through the lotus
@@ -929,7 +934,7 @@ void main(){ vec3 c = texture2D(s, v).rgb;
     if (P) {
       freeTargets();
       const w = canvas.width, h = canvas.height;
-      T = { S: target(w, h), A1: target(w / 4, h / 4), A2: target(w / 4, h / 4), B1: target(w / 8, h / 8), B2: target(w / 8, h / 8) };
+      T = { S: target(w, h), N: target(w / 4, h / 4), A1: target(w / 4, h / 4), A2: target(w / 4, h / 4), B1: target(w / 8, h / 8), B2: target(w / 8, h / 8) };
     }
     measure();
   }
@@ -1029,7 +1034,9 @@ void main(){ vec3 c = texture2D(s, v).rgb;
       anim.bloom += (bloomTarget - anim.bloom) * Math.min(1, dt * 0.8);
       const geo = CHAKRAS[anim.shown];
 
-      pass(P.scene, T.S, (p) => {
+      pass(P.scene, T.N, (p) => {                       // sky pass at quarter res; uniforms set here carry over to the main pass
+        bind(p, 'uSky', 1, T.A2);                       // anything but T.N, or WebGL flags a feedback loop
+        gl.uniform1f(p.u('uSkyPass'), 1); gl.uniform2f(p.u('uFragScale'), T.S.w / T.N.w, T.S.h / T.N.h);
         gl.uniform2f(p.u('uRes'), T.S.w, T.S.h);
         gl.uniform2f(p.u('uCenter'), center[0], center[1]);
         gl.uniform1f(p.u('uRadius'), radius);
@@ -1045,6 +1052,10 @@ void main(){ vec3 c = texture2D(s, v).rgb;
         gl.uniform1f(p.u('uGeom'), geo.geom);
         gl.uniform3fv(p.u('uBg'), cur.bg); gl.uniform3fv(p.u('uA'), cur.a); gl.uniform3fv(p.u('uB'), cur.b); gl.uniform3fv(p.u('uC'), cur.c); gl.uniform3fv(p.u('uGold'), cur.gold);
         gl.uniform3f(p.u('uAudio'), au[0], au[1], au[2]);
+      });
+      pass(P.scene, T.S, (p) => {
+        bind(p, 'uSky', 1, T.N);
+        gl.uniform1f(p.u('uSkyPass'), 0); gl.uniform2f(p.u('uFragScale'), 1, 1);
       });
       const highQ = quality > 0.7;
       pass(P.bright, T.A1, (p) => { bind(p, 't', 0, T.S); gl.uniform2f(p.u('px'), 1 / T.S.w, 1 / T.S.h); gl.uniform1f(p.u('th'), 0.58); });
