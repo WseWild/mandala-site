@@ -653,7 +653,7 @@ body.immersed .dim{opacity:0;pointer-events:none}
 precision highp float;
 uniform vec2 uRes; uniform vec2 uCenter; uniform float uRadius;
 uniform float uTime; uniform float uWall; uniform float uBreath; uniform float uProgress; uniform float uShowRing; uniform float uPx; uniform float uBloom; uniform float uVis;
-uniform float uPetals; uniform float uOuter; uniform float uSeg; uniform float uGeom; uniform float uAberration;
+uniform float uPetals; uniform float uOuter; uniform float uGeom;
 uniform vec3 uBg; uniform vec3 uA; uniform vec3 uB; uniform vec3 uC; uniform vec3 uGold;
 const float TAU = 6.2831853;
 float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
@@ -683,56 +683,112 @@ vec3 stars(vec2 s, float cells, float size, float density, vec2 drift, float twi
   return tint * b * (glow + spike);
 }
 
-float yantra(vec2 q){
-  float g = uGeom, d = 1e3;
-  if (g < .5) return 0.;
-  else if (g < 1.5) d = min(abs(sdBox(q, vec2(.3))), abs(sdBox(q, vec2(.2))));
-  else if (g < 2.5) d = abs(max(length(q) - .3, -(length(q - vec2(0., .12)) - .25)));
-  else if (g < 3.5) d = abs(sdTri(vec2(q.x, -q.y), .3));
-  else if (g < 4.5) d = min(abs(sdTri(q, .28)), abs(sdTri(vec2(q.x, -q.y), .28)));
-  else if (g < 5.5) d = min(abs(sdTri(vec2(q.x, -q.y), .32)), abs(length(q) - .14));
-  else d = min(abs(sdTri(vec2(q.x, -q.y), .16)), abs(length(q) - .3));
-  return exp(-d*85.);
+/* ---- 3D lotus, raymarched: material ids 0 core, 1 inner petals, 2 outer petals, 3 emissive (ring, beads, yantra) ---- */
+float gInhale, gCore, gEm;
+mat2 rot(float a){ float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
+float sdEllipsoid(vec3 p, vec3 r){ float k0 = length(p/r), k1 = length(p/(r*r)); return k0*(k0 - 1.)/k1; }
+
+float yantraD(vec2 q){
+  float g = uGeom;
+  if (g < .5) return 1e3;
+  else if (g < 1.5) return min(abs(sdBox(q, vec2(.3))), abs(sdBox(q, vec2(.2))));
+  else if (g < 2.5) return abs(max(length(q) - .3, -(length(q - vec2(0., .12)) - .25)));
+  else if (g < 3.5) return abs(sdTri(vec2(q.x, -q.y), .3));
+  else if (g < 4.5) return min(abs(sdTri(q, .28)), abs(sdTri(vec2(q.x, -q.y), .28)));
+  else if (g < 5.5) return min(abs(sdTri(vec2(q.x, -q.y), .32)), abs(length(q) - .14));
+  return min(abs(sdTri(vec2(q.x, -q.y), .16)), abs(length(q) - .3));
 }
 
-vec3 mandala(vec2 m, float T){
-  float r = length(m);
-  float a = atan(m.y, m.x);
-  float warp = fbm(vec2(r*3. - T*.15, a*1.5 + T*.02)) - .5;
+// one petal evaluated per ring via angular repetition, so cost doesn't grow with petal count
+float petals(float A, float r, float y, float n, float rad, vec3 size, float tilt){
+  float sec = TAU/n;
+  float a = mod(A + sec*.5, sec) - sec*.5;
+  vec3 lp = vec3(r*cos(a) - (rad - size.x), y, r*sin(a));
+  lp.xy = rot(tilt) * lp.xy;                 // pivot at the inner base, tip rises as the lotus closes
+  lp.x -= size.x;
+  lp.y -= lp.z*lp.z*2.2;                     // cup the petal across its width
+  return sdEllipsoid(lp, size);
+}
 
-  float pet1 = abs(cos(a*uPetals*.5 + T*.3 + warp*.7));
-  float d1 = r - (.26 + .22*pow(pet1, .6));
-  float g1 = exp(-abs(d1)*26.) + smoothstep(.02, -.12, d1)*.3;
+vec2 map(vec3 p){
+  float T = uTime;
+  float open = clamp(uBloom*.75 + gInhale*.25, 0., 1.);
+  vec3 q = p; q.xz = rot(T*.12) * q.xz;
+  float A = atan(q.z, q.x), r = length(q.xz);
 
-  float pet2 = abs(cos(a*uOuter*.5 - T*.2 + warp*.4));
-  float g2 = exp(-abs(r - (.64 + .09*pet2))*38.);
+  float core = length(p) - (.19 + .03*gInhale);
+  float w1 = min(.2, 1.15/uPetals);
+  float inner = petals(A, r, q.y, uPetals, .42, vec3(.25, .03, w1), mix(1.15, .5, open));
+  float w2 = min(.14, 2.1/uOuter);
+  float outer = petals(A + TAU/uOuter*.5 - T*.04, r, q.y + .04, uOuter, .74, vec3(.23, .022, w2), mix(.75, .16, open));
 
-  float seg = TAU/uSeg;
-  float ka = abs(mod(a + T*.05 + warp*.2, seg) - seg*.5);
-  vec2 kp = vec2(cos(ka), sin(ka))*r;
-  float lotus = exp(-abs(length(kp - vec2(.52, 0.)) - .15)*42.);
-  float seg2 = TAU/(uSeg*2.);
-  float kb = abs(mod(a - T*.08, seg2) - seg2*.5);
-  vec2 kq = vec2(cos(kb), sin(kb))*r;
-  float fil = exp(-abs(length(kq - vec2(.36, 0.)) - .06)*90.);
+  float ring = length(vec2(r - .98, q.y + .02)) - .007;
+  float sec = TAU/36.;
+  float ab = mod(A - T*.07 + sec*.5, sec) - sec*.5;
+  float beads = length(vec3(r*cos(ab) - 1.06, q.y + .02 + .015*sin(A*6. + T), r*sin(ab))) - .02;
 
-  float ripple = pow(.5 + .5*sin(r*46. - T*1.5 + warp*5.), 6.) * smoothstep(.95, .3, r) * smoothstep(.05, .22, r);
+  vec3 yq = p; yq.xz = rot(-T*.2) * yq.xz;
+  vec2 yw = vec2(yantraD(yq.xz) - .008, abs(yq.y - .3 - .02*sin(T*.7)) - .01);
+  float yan = min(max(yw.x, yw.y), 0.) + length(max(yw, 0.));
 
-  float fol = 0.;
-  for (int i = 0; i < 6; i++) { float an = float(i)*1.0472 - T*.12; vec2 c = vec2(cos(an), sin(an))*.24; fol += exp(-abs(length(m - c) - .24)*70.); }
-  if (uGeom > .5) fol *= .45; // let the yantra lead in the centre
+  gCore = core;
+  gEm = min(min(ring, beads), yan);
+  vec2 res = vec2(core, 0.);
+  if (inner < res.x) res = vec2(inner, 1.);
+  if (outer < res.x) res = vec2(outer, 2.);
+  if (gEm < res.x) res = vec2(gEm, 3.);
+  return res;
+}
 
-  float da = mod(a + T*.07, TAU/36.) - TAU/72.;
-  float dots = exp(-length(vec2(r - .88, da*r))*85.);
-  float core = exp(-r*8.)*1.3;
+vec3 calcNormal(vec3 p){
+  const vec2 k = vec2(1., -1.); const float e = .0015;
+  return normalize(k.xyy*map(p + k.xyy*e).x + k.yyx*map(p + k.yyx*e).x + k.yxy*map(p + k.yxy*e).x + k.xxx*map(p + k.xxx*e).x);
+}
 
-  float t1 = .5 + .5*sin(a*3. + r*6. - T*.4 + warp*3.);
-  vec3 pal = mix(mix(uA, uB, t1), uC, smoothstep(.4, .9, r)*.6);
-  float open = uBloom;
-  vec3 col = pal*(g1*.9 + ripple*.4) + uC*g2*.85*open + mix(uB, uGold, .4)*lotus*.75*open
-           + mix(uGold, uC, .5)*fil*.6*open + uGold*(fol*.5 + dots*1.3) + mix(uGold, vec3(1.), .5)*core
-           + mix(uGold, vec3(1.), .45)*yantra(m)*1.1;
-  return col * smoothstep(1.02, .84, r);
+vec3 lotus(vec2 p, float inhale){
+  gInhale = inhale;
+  float el = .98 + .06*sin(uWall*.07);
+  vec3 ro = vec3(0., sin(el), cos(el)) * 3.4;
+  vec3 ww = normalize(-ro), uu = normalize(cross(ww, vec3(0., 1., 0.))), vv = cross(uu, ww);
+  vec3 rd = normalize(p.x*uu + p.y*vv + 2.85*ww);   // keeps the bead ring inside the 2D progress ring even at full inhale
+
+  float b = dot(ro, rd), h = b*b - (dot(ro, ro) - 1.3225);   // bounding sphere r = 1.15: skip the march entirely outside it
+  if (h < 0.) return vec3(0.);
+  h = sqrt(h);
+  float t = max(-b - h, 0.), tEnd = -b + h;
+
+  vec3 glowCore = mix(uGold, vec3(1.), .5), glowEm = mix(uC, uGold, .4);
+  vec3 glow = vec3(0.);
+  float id = -1.;
+  for (int i = 0; i < 80; i++) {
+    vec2 res = map(ro + rd*t);
+    float dt = res.x*.8;
+    glow += (glowCore*exp(-gCore*8.)*1.4 + glowEm*exp(-gEm*50.)*.9) * min(dt, .08);
+    if (res.x < .001*t) { id = res.y; break; }
+    t += dt;
+    if (t > tEnd) break;
+  }
+
+  vec3 col = vec3(0.);
+  if (id > -.5) {
+    vec3 pos = ro + rd*t;
+    if (id < .5) col = glowCore*2.4;
+    else if (id > 2.5) col = glowEm*1.1;
+    else {
+      vec3 n = calcNormal(pos);
+      vec3 L = normalize(-pos);
+      float att = 1./(1. + dot(pos, pos)*3.);
+      float dif = max(dot(n, L), 0.);
+      float trans = max(dot(-n, L), 0.);           // petals are thin: the core shines through from behind
+      float fre = pow(1. - max(dot(n, -rd), 0.), 3.);
+      vec3 base = id < 1.5 ? mix(uA, uB, .5 + .5*n.y) : mix(uB, uC, .4 + .6*fre);
+      base = hueShift(base, fre*1.2);              // thin-film iridescence at grazing angles
+      vec2 lq = rot(uTime*.12) * pos.xz;
+      float vein = pow(abs(sin(atan(lq.y, lq.x)*(id < 1.5 ? uPetals : uOuter)*3.)), 24.)*.25;
+      col = base*((dif*1.3 + trans*1.6)*att*2.2 + .06) + mix(uC, uGold, .5)*(fre*1.1 + vein*att);
+    }
+  }
+  return col + glow;
 }
 
 void main(){
@@ -764,16 +820,7 @@ void main(){
   col += mix(uA, uGold, .45) * halo * (.09 + .17*inhale) * uVis;
 
   vec2 m = p / (uBreath * (.55 + .45*uVis));
-  vec3 mG = mandala(m, T);
-  vec3 mand;
-  if (uAberration > .5) {
-    float ca = .012 + .006*inhale;
-    vec3 mR = mandala(m * (1. - ca), T);
-    vec3 mB = mandala(m * (1. + ca), T);
-    mand = vec3(mR.r, mG.g, mB.b) * uVis;
-  } else {
-    mand = mG * uVis;
-  }
+  vec3 mand = lotus(m, inhale) * uVis;
   mand = hueShift(mand, sin(W*.11)*.5);
   mand = 1. - exp(-mand*1.5);
   col += mix(uA, uB, .5) * exp(-R*2.3) * (.25 + .15*inhale);
@@ -903,7 +950,6 @@ void main(){ vec3 c = texture2D(s, v).rgb;
           + '\nquality ' + quality.toFixed(2)
           + '\nDPR ' + DPR.toFixed(2)
           + '\ncanvas ' + canvas.width + 'x' + canvas.height
-          + '\naberration ' + (quality > 0.7 ? 'on' : 'off')
           + '\nbloom ' + (quality > 0.7 ? 'full' : 'half')
           + '\nslow/fast ' + slow + '/' + fast;
         dbgFrames = 0; dbgTime = 0;
@@ -946,8 +992,7 @@ void main(){ vec3 c = texture2D(s, v).rgb;
         gl.uniform1f(p.u('uBloom'), anim.bloom);
         gl.uniform1f(p.u('uVis'), .5 - .5 * Math.cos(Math.PI * anim.vis));
         gl.uniform1f(p.u('uPetals'), geo.petals); gl.uniform1f(p.u('uOuter'), geo.outer);
-        gl.uniform1f(p.u('uSeg'), geo.seg); gl.uniform1f(p.u('uGeom'), geo.geom);
-        gl.uniform1f(p.u('uAberration'), quality > 0.7 ? 1 : 0);
+        gl.uniform1f(p.u('uGeom'), geo.geom);
         gl.uniform3fv(p.u('uBg'), cur.bg); gl.uniform3fv(p.u('uA'), cur.a); gl.uniform3fv(p.u('uB'), cur.b); gl.uniform3fv(p.u('uC'), cur.c); gl.uniform3fv(p.u('uGold'), cur.gold);
       });
       const highQ = quality > 0.7;
