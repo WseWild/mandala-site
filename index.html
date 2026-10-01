@@ -767,7 +767,7 @@ vec3 lotus(vec2 p, float inhale){
   for (int i = 0; i < 80; i++) {
     vec2 res = map(ro + rd*t);
     float dt = res.x*.8;
-    glow += (glowCore*exp(-gCore*8.)*(1.4 + uAudio.x*.45) + glowEm*exp(-gEm*50.)*(.9 + uAudio.z*.8)) * min(dt, .08);
+    glow += (glowCore*exp(-gCore*8.)*(.8 + uAudio.x*1.) + glowEm*exp(-gEm*50.)*(.9 + uAudio.z*.8)) * min(dt, .08);   // calm at rest, full blaze only on loud lows
     if (res.x < .001*t) { id = res.y; break; }
     t += dt;
     if (t > tEnd) break;
@@ -776,7 +776,7 @@ vec3 lotus(vec2 p, float inhale){
   vec3 col = vec3(0.);
   if (id > -.5) {
     vec3 pos = ro + rd*t;
-    if (id < .5) col = glowCore*2.4;
+    if (id < .5) col = glowCore*(1.5 + uAudio.x*.9);
     else if (id > 2.5) col = glowEm*1.1;
     else {
       vec3 n = calcNormal(pos);
@@ -832,8 +832,8 @@ void main(){
   vec3 mand = lotus(m, inhale) * uVis;
   mand = hueShift(mand, sin(W*.11)*.5);
   mand = 1. - exp(-mand*1.5);
-  col += mix(uA, uB, .5) * exp(-R*2.3) * (.25 + .15*inhale + .12*uAudio.x);
-  col += mix(uB, uGold, .3) * exp(-R*R*9.) * .18 * inhale;
+  col += mix(uA, uB, .5) * exp(-R*2.3) * (.15 + .09*inhale + .2*uAudio.x);
+  col += mix(uB, uGold, .3) * exp(-R*R*9.) * .1 * inhale;
   col += mand;
 
   float rp = abs(R - .975) * uRadius / uPx;
@@ -1071,7 +1071,7 @@ void main(){ vec3 c = texture2D(s, v).rgb;
       }
       pass(P.comp, null, (p) => {
         bind(p, 's', 0, T.S); bind(p, 'b1', 1, T.A1); bind(p, 'b2', 2, highQ ? T.B1 : T.A1);
-        gl.uniform1f(p.u('k'), 0.45 + 0.2 * bs.level + 0.15 * au[0]);
+        gl.uniform1f(p.u('k'), 0.3 + 0.13 * bs.level + 0.3 * au[0]);
         gl.uniform2f(p.u('res'), canvas.width, canvas.height);
       });
     }
