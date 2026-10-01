@@ -788,6 +788,13 @@ void main(){ vec3 c = texture2D(s, v).rgb;
   const canvas = el.sky;
   const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, desynchronized: true, powerPreference: 'high-performance' }) || canvas.getContext('experimental-webgl');
   const anim = { t: 0, breath: 0, speed: 1, spin: 1, wall: 0, bloom: 1, vis: 1, shown: st.chakra };
+  const DEBUG = new URLSearchParams(location.search).has('debug');
+  let dbgEl = null;
+  if (DEBUG) {
+    dbgEl = document.createElement('div');
+    dbgEl.style.cssText = 'position:fixed;top:8px;left:8px;z-index:9999;background:rgba(0,0,0,.65);color:#0f0;font:12px/1.5 monospace;padding:8px 12px;border-radius:6px;white-space:pre;pointer-events:none';
+    document.body.appendChild(dbgEl);
+  }
   const weakDevice = matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 4) <= 4;
   let P = null, W = 0, H = 0, DPR = 1, quality = weakDevice ? 0.7 : 1, center = [0, 0], radius = 100, T = {};
 
@@ -860,11 +867,26 @@ void main(){ vec3 c = texture2D(s, v).rgb;
   }
 
   let last = performance.now(), slow = 0, fast = 0;
+  let dbgFrames = 0, dbgTime = 0;
   function frame(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (dt > 0.028) { slow++; fast = 0; } else if (dt < 0.018) { fast++; slow = 0; }
     if (slow > 10 && quality > 0.3) { quality *= 0.75; slow = 0; resize(); }
     if (fast > 180 && quality < 1) { quality = Math.min(1, quality * 1.15); fast = 0; resize(); }
+
+    if (dbgEl) {
+      dbgFrames++; dbgTime += dt;
+      if (dbgTime >= 0.25) {
+        dbgEl.textContent = 'fps ' + (dbgFrames / dbgTime).toFixed(0)
+          + '\nquality ' + quality.toFixed(2)
+          + '\nDPR ' + DPR.toFixed(2)
+          + '\ncanvas ' + canvas.width + 'x' + canvas.height
+          + '\naberration ' + (quality > 0.7 ? 'on' : 'off')
+          + '\nbloom ' + (quality > 0.7 ? 'full' : 'half')
+          + '\nslow/fast ' + slow + '/' + fast;
+        dbgFrames = 0; dbgTime = 0;
+      }
+    }
 
     const target = st.screen === 'session' && !st.running ? 0 : 1;
     anim.speed += (target - anim.speed) * Math.min(1, dt * 2.5);
