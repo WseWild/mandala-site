@@ -1080,9 +1080,10 @@ void main(){ float r = length(gl_PointCoord - .5)*4.;   // sprite is 4x the core
   // of each half-second window: drop resolution while we can't keep up, creep back up after a cooldown once we can.
   // fps is a trimmed mean (worst 10% of frames dropped) so one-off hitches — shader compiles, audio buffers, GC — don't count,
   // and the first 3 s after load are ignored entirely.
-  const PF = { dts: [], hz: 60, ok: 0, cool: 0, grace: 3 };
+  const PF = { dts: [], hz: 60, ok: 0, cool: 0, grace: 3, ceil: 1, ceilT: 0 };   // ceil: a level that just failed, off limits for a minute
   function adapt(dt) {
     PF.dts.push(dt); PF.cool -= dt; PF.grace -= dt;
+    if ((PF.ceilT -= dt) <= 0) PF.ceil = 1;
     const span = PF.dts.reduce((a, b) => a + b, 0);
     if (span < 0.5) return;
     const sorted = PF.dts.slice().sort((a, b) => a - b);
@@ -1091,8 +1092,11 @@ void main(){ float r = length(gl_PointCoord - .5)*4.;   // sprite is 4x the core
     PF.hz = 1 / Math.max(sorted[Math.floor(sorted.length * 0.1)], 1 / 240);
     const kept = sorted.slice(0, Math.ceil(sorted.length * 0.9));
     const fps = kept.length / kept.reduce((a, b) => a + b, 0);
-    if (fps < PF.hz * 0.85 && quality > 0.35) { quality *= 0.88; PF.ok = 0; PF.cool = 8; resize(); }
-    else if (fps > PF.hz * 0.96 && quality < 1) { if (++PF.ok >= 6 && PF.cool <= 0) { quality = Math.min(1, quality * 1.08); PF.ok = 0; resize(); } }
+    if (fps < PF.hz * 0.85 && quality > 0.35) { PF.ceil = quality; PF.ceilT = 60; quality *= 0.88; PF.ok = 0; PF.cool = 8; resize(); }
+    else if (fps > PF.hz * 0.96 && quality < 1) {
+      const next = Math.min(1, quality * 1.08);
+      if (++PF.ok >= 6 && PF.cool <= 0 && (PF.ceilT <= 0 || next < PF.ceil - 1e-3)) { quality = next; PF.ok = 0; resize(); }
+    }
     else PF.ok = 0;
   }
 
