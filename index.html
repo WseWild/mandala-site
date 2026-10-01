@@ -272,7 +272,7 @@ body.immersed .dim{opacity:0;pointer-events:none}
   /* ---------- Audio engine: high-resolution synthesis ----------
      96 kHz context where the device allows it, 32-bit float graph, 30 s decorrelated stereo noise (no audible loop),
      generated convolution reverb for ambience and bowl, binaural kept dry, soft limiter on the master bus. */
-  const A = { ctx: null, master: null, bus: null, verb: null, amb: null, bin: null, active: false, buffers: {}, rate: 0 };
+  const A = { ctx: null, master: null, bus: null, verb: null, amb: null, bin: null, an: null, freq: null, active: false, buffers: {}, rate: 0 };
   function audioCtx() {
     if (!A.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -287,6 +287,8 @@ body.immersed .dim{opacity:0;pointer-events:none}
       limiter.threshold.value = -8; limiter.knee.value = 12; limiter.ratio.value = 4; limiter.attack.value = .01; limiter.release.value = .4;
       limiter.connect(ac.destination);
       A.bus = ac.createGain(); A.bus.gain.value = .9; A.bus.connect(limiter);        // everything ends here
+      A.an = ac.createAnalyser(); A.an.fftSize = 1024; A.an.smoothingTimeConstant = .6; A.bus.connect(A.an);
+      A.freq = new Uint8Array(A.an.frequencyBinCount);
       A.master = ac.createGain(); A.master.gain.value = 0; A.master.connect(A.bus); // soundscape (pause fades this)
       A.verb = ac.createConvolver(); A.verb.buffer = impulse(3, 2.6);
       const wet = ac.createGain(); wet.gain.value = .42; A.verb.connect(wet).connect(A.bus);
@@ -655,6 +657,7 @@ uniform vec2 uRes; uniform vec2 uCenter; uniform float uRadius;
 uniform float uTime; uniform float uWall; uniform float uBreath; uniform float uProgress; uniform float uShowRing; uniform float uPx; uniform float uBloom; uniform float uVis;
 uniform float uPetals; uniform float uOuter; uniform float uGeom;
 uniform vec3 uBg; uniform vec3 uA; uniform vec3 uB; uniform vec3 uC; uniform vec3 uGold;
+uniform vec3 uAudio;   // x low, y mid, z high: each 0..1, normalised to the recent dynamic range
 const float TAU = 6.2831853;
 float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
 vec2 hash2(vec2 p){ return vec2(hash(p), hash(p + 17.31)); }
@@ -675,7 +678,7 @@ vec3 stars(vec2 s, float cells, float size, float density, vec2 drift, float twi
   float seed = hash(id + 9.1);
   float phase = hash(id + 2.3) * TAU;
   float tw = mix(1., .5 + .5*sin(uWall*(1.1 + seed*1.6) + phase), twinkle);
-  float b = (.35 + .65*seed) * tw;
+  float b = (.35 + .65*seed) * tw * (1. + uAudio.z*1.6*smoothstep(.55, 1., hash(id + 7.7)));   // highs flare a subset
   vec3 tint = mix(vec3(1.), mix(uC, uGold, hash(id + 5.3)), .35);
   float glow = exp(-d*d / (size*size));
   float hero = step(.91, seed);                                   // ~9% of stars are bright enough for a diffraction glint
@@ -716,7 +719,7 @@ vec2 map(vec3 p){
   vec3 q = p; q.xz = rot(T*.12) * q.xz;
   float A = atan(q.z, q.x), r = length(q.xz);
 
-  float core = length(p) - (.19 + .03*gInhale);
+  float core = length(p) - (.19 + .03*gInhale + .04*uAudio.x);
   float w1 = min(.2, 1.15/uPetals);
   float inner = petals(A, r, q.y, uPetals, .42, vec3(.25, .03, w1), mix(1.15, .5, open));
   float w2 = min(.14, 2.1/uOuter);
@@ -763,7 +766,7 @@ vec3 lotus(vec2 p, float inhale){
   for (int i = 0; i < 80; i++) {
     vec2 res = map(ro + rd*t);
     float dt = res.x*.8;
-    glow += (glowCore*exp(-gCore*8.)*1.4 + glowEm*exp(-gEm*50.)*.9) * min(dt, .08);
+    glow += (glowCore*exp(-gCore*8.)*(1.4 + uAudio.x*1.2) + glowEm*exp(-gEm*50.)*(.9 + uAudio.z*.8)) * min(dt, .08);
     if (res.x < .001*t) { id = res.y; break; }
     t += dt;
     if (t > tEnd) break;
@@ -820,10 +823,11 @@ void main(){
   col += mix(uA, uGold, .45) * halo * (.09 + .17*inhale) * uVis;
 
   vec2 m = p / (uBreath * (.55 + .45*uVis));
+  m *= 1. + uAudio.y*.016*sin(length(m)*28. - uWall*9.);   // mids send a faint ripple through the lotus
   vec3 mand = lotus(m, inhale) * uVis;
   mand = hueShift(mand, sin(W*.11)*.5);
   mand = 1. - exp(-mand*1.5);
-  col += mix(uA, uB, .5) * exp(-R*2.3) * (.25 + .15*inhale);
+  col += mix(uA, uB, .5) * exp(-R*2.3) * (.25 + .15*inhale + .3*uAudio.x);
   col += mix(uB, uGold, .3) * exp(-R*R*9.) * .18 * inhale;
   col += mand;
 
@@ -935,6 +939,31 @@ void main(){ vec3 c = texture2D(s, v).rgb;
     pass(P.blur, src, (p) => { bind(p, 't', 0, tmp); gl.uniform2f(p.u('d'), 0, spread / tmp.h); });
   }
 
+  // Analyser bytes are already on a dB scale, so each band reacts to how far it rises above its own ~2 s average:
+  // steady sound (a binaural tone, even rain hiss) settles near 0 and only swells and transients light the scene.
+  const BANDS = [[40, 250], [250, 2000], [2000, 9000]];
+  const AU = { v: [0, 0, 0], env: [0, 0, 0], avg: [0, 0, 0], warm: 0 };
+  function readAudio(dt) {
+    const live = A.an && A.active && A.ctx.state === 'running';
+    if (live) A.an.getByteFrequencyData(A.freq);
+    AU.warm = live ? Math.min(1, AU.warm + dt / 4) : 0;   // sound fading in from silence isn't a "swell"
+    const hz = live ? A.ctx.sampleRate / A.an.fftSize : 1;
+    for (let i = 0; i < 3; i++) {
+      let x = 0;
+      if (live) {
+        const lo = Math.max(1, Math.round(BANDS[i][0] / hz)), hi = Math.min(A.freq.length - 1, Math.round(BANDS[i][1] / hz));
+        let s = 0; for (let k = lo; k <= hi; k++) s += A.freq[k];
+        const e = s / ((hi - lo + 1) * 255);
+        AU.env[i] += (e - AU.env[i]) * Math.min(1, dt * (e > AU.env[i] ? 30 : 8));
+        const v = AU.env[i];
+        AU.avg[i] += (v - AU.avg[i]) * Math.min(1, dt * (.5 + 8 * (1 - AU.warm)));   // tracks fast while the sound fades in
+        x = Math.min(1, Math.max(0, (v - AU.avg[i] - .006) / .04)) * AU.warm * AU.warm;   // ~0.4 dB dead zone, full at ~3 dB above average
+      }
+      AU.v[i] += (x - AU.v[i]) * Math.min(1, dt * (x > AU.v[i] ? 10 : 2.5));   // quick bloom, slow afterglow
+    }
+    return AU.v;
+  }
+
   let last = performance.now(), slow = 0, fast = 0;
   let dbgFrames = 0, dbgTime = 0;
   function frame(now) {
@@ -942,6 +971,7 @@ void main(){ vec3 c = texture2D(s, v).rgb;
     if (dt > 0.028) { slow++; fast = 0; } else if (dt < 0.018) { fast++; slow = 0; }
     if (slow > 10 && quality > 0.3) { quality *= 0.75; slow = 0; resize(); }
     if (fast > 180 && quality < 1) { quality = Math.min(1, quality * 1.15); fast = 0; resize(); }
+    const au = readAudio(dt);
 
     if (dbgEl) {
       dbgFrames++; dbgTime += dt;
@@ -951,7 +981,8 @@ void main(){ vec3 c = texture2D(s, v).rgb;
           + '\nDPR ' + DPR.toFixed(2)
           + '\ncanvas ' + canvas.width + 'x' + canvas.height
           + '\nbloom ' + (quality > 0.7 ? 'full' : 'half')
-          + '\nslow/fast ' + slow + '/' + fast;
+          + '\nslow/fast ' + slow + '/' + fast
+          + '\naudio ' + au.map((x) => x.toFixed(2)).join(' ');
         dbgFrames = 0; dbgTime = 0;
       }
     }
@@ -994,6 +1025,7 @@ void main(){ vec3 c = texture2D(s, v).rgb;
         gl.uniform1f(p.u('uPetals'), geo.petals); gl.uniform1f(p.u('uOuter'), geo.outer);
         gl.uniform1f(p.u('uGeom'), geo.geom);
         gl.uniform3fv(p.u('uBg'), cur.bg); gl.uniform3fv(p.u('uA'), cur.a); gl.uniform3fv(p.u('uB'), cur.b); gl.uniform3fv(p.u('uC'), cur.c); gl.uniform3fv(p.u('uGold'), cur.gold);
+        gl.uniform3f(p.u('uAudio'), au[0], au[1], au[2]);
       });
       const highQ = quality > 0.7;
       pass(P.bright, T.A1, (p) => { bind(p, 't', 0, T.S); gl.uniform2f(p.u('px'), 1 / T.S.w, 1 / T.S.h); gl.uniform1f(p.u('th'), 0.58); });
@@ -1004,7 +1036,7 @@ void main(){ vec3 c = texture2D(s, v).rgb;
       }
       pass(P.comp, null, (p) => {
         bind(p, 's', 0, T.S); bind(p, 'b1', 1, T.A1); bind(p, 'b2', 2, highQ ? T.B1 : T.A1);
-        gl.uniform1f(p.u('k'), 0.45 + 0.2 * bs.level);
+        gl.uniform1f(p.u('k'), 0.45 + 0.2 * bs.level + 0.3 * au[0]);
         gl.uniform2f(p.u('res'), canvas.width, canvas.height);
       });
     }
