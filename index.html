@@ -282,7 +282,7 @@ body.immersed .dim{opacity:0;pointer-events:none}
       const wet = ac.createGain(); wet.gain.value = .42; A.verb.connect(wet).connect(A.bus);
       render();
     }
-    if (A.ctx.state === 'suspended') A.ctx.resume();
+    if (A.ctx.state === 'suspended') A.ctx.resume().catch(() => {});
     return A.ctx;
   }
   function impulse(seconds, decay) {
@@ -955,6 +955,11 @@ void main(){ vec3 c = texture2D(s, v).rgb;
 
   buildControls(); applyTheme(); render(); syncFS();
   requestAnimationFrame(frame);
+
+  // Pre-generate the noise buffers (30s of audio each) during idle time so the
+  // first "Начать"/"Послушать" tap doesn't block the main thread for ~450ms.
+  const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1200));
+  idle(() => { try { if (audioCtx()) { noiseBuf('pink'); noiseBuf('brown'); } } catch (e) {} }, { timeout: 4000 });
 })();
 </script>
 
