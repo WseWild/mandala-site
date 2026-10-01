@@ -267,7 +267,7 @@ body.immersed .dim{opacity:0;pointer-events:none}
     if (!A.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
-      for (const opts of [{ sampleRate: 96000, latencyHint: 'playback' }, { latencyHint: 'playback' }, undefined]) {
+      for (const opts of [{ latencyHint: 'playback' }, undefined]) {
         try { A.ctx = opts ? new AC(opts) : new AC(); break; } catch (e) { A.ctx = null; }
       }
       if (!A.ctx) return null;
@@ -278,7 +278,7 @@ body.immersed .dim{opacity:0;pointer-events:none}
       limiter.connect(ac.destination);
       A.bus = ac.createGain(); A.bus.gain.value = .9; A.bus.connect(limiter);        // everything ends here
       A.master = ac.createGain(); A.master.gain.value = 0; A.master.connect(A.bus); // soundscape (pause fades this)
-      A.verb = ac.createConvolver(); A.verb.buffer = impulse(4.8, 2.6);
+      A.verb = ac.createConvolver(); A.verb.buffer = impulse(3, 2.6);
       const wet = ac.createGain(); wet.gain.value = .42; A.verb.connect(wet).connect(A.bus);
       render();
     }
@@ -536,7 +536,7 @@ body.immersed .dim{opacity:0;pointer-events:none}
     el.summaryBtn.textContent = br.name + ' ' + br.label + ' · ' + am.name + ' · ' + (be.hz ? be.name : 'без бинаурала');
     el.summaryBtn.setAttribute('aria-label', 'Настройки: ' + el.summaryBtn.textContent);
     el.beatNote.textContent = be.note + (be.hz ? ' Слушай в наушниках: каждое ухо получает свой тон. Основа — частота чакры ' + c.name + ' (' + c.hz + ' Гц) октавой ниже.' : '');
-    if (A.rate) el.qualityNote.textContent = 'Звук синтезируется в реальном времени: ' + (A.rate / 1000).toLocaleString('ru-RU') + ' кГц, 32-bit float' + (A.rate < 96000 ? ' (96 кГц это устройство не отдаёт, работаем на максимуме, что есть)' : '') + '.';
+    if (A.rate) el.qualityNote.textContent = 'Звук синтезируется в реальном времени: ' + (A.rate / 1000).toLocaleString('ru-RU') + ' кГц, 32-bit float.';
     el.previewBtn.hidden = s !== 'setup';
     el.previewBtn.textContent = st.preview ? 'Остановить' : 'Послушать';
     if (s === 'setup') { el.big.textContent = st.minutes + ':00'; el.sub.textContent = 'длительность'; }
@@ -640,7 +640,7 @@ body.immersed .dim{opacity:0;pointer-events:none}
 precision highp float;
 uniform vec2 uRes; uniform vec2 uCenter; uniform float uRadius;
 uniform float uTime; uniform float uWall; uniform float uBreath; uniform float uProgress; uniform float uShowRing; uniform float uPx; uniform float uBloom; uniform float uVis;
-uniform float uPetals; uniform float uOuter; uniform float uSeg; uniform float uGeom;
+uniform float uPetals; uniform float uOuter; uniform float uSeg; uniform float uGeom; uniform float uAberration;
 uniform vec3 uBg; uniform vec3 uA; uniform vec3 uB; uniform vec3 uC; uniform vec3 uGold;
 const float TAU = 6.2831853;
 float hash(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
@@ -742,11 +742,16 @@ void main(){
   col += mix(uA, uGold, .45) * rays * smoothstep(.55, 1.05, R) * exp(-(R - 1.)*1.4) * (.08 + .16*inhale) * uVis;
 
   vec2 m = p / (uBreath * (.55 + .45*uVis));
-  float ca = .012 + .006*inhale;
-  vec3 mR = mandala(m * (1. - ca), T);
   vec3 mG = mandala(m, T);
-  vec3 mB = mandala(m * (1. + ca), T);
-  vec3 mand = vec3(mR.r, mG.g, mB.b) * uVis;
+  vec3 mand;
+  if (uAberration > .5) {
+    float ca = .012 + .006*inhale;
+    vec3 mR = mandala(m * (1. - ca), T);
+    vec3 mB = mandala(m * (1. + ca), T);
+    mand = vec3(mR.r, mG.g, mB.b) * uVis;
+  } else {
+    mand = mG * uVis;
+  }
   mand = hueShift(mand, sin(W*.11)*.5);
   mand = 1. - exp(-mand*1.5);
   col += mix(uA, uB, .5) * exp(-R*2.3) * (.25 + .15*inhale);
@@ -783,7 +788,8 @@ void main(){ vec3 c = texture2D(s, v).rgb;
   const canvas = el.sky;
   const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, powerPreference: 'high-performance' }) || canvas.getContext('experimental-webgl');
   const anim = { t: 0, breath: 0, speed: 1, spin: 1, wall: 0, bloom: 1, vis: 1, shown: st.chakra };
-  let P = null, W = 0, H = 0, DPR = 1, quality = 1, center = [0, 0], radius = 100, T = {};
+  const weakDevice = matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 4) <= 4;
+  let P = null, W = 0, H = 0, DPR = 1, quality = weakDevice ? 0.7 : 1, center = [0, 0], radius = 100, T = {};
 
   function program(fs) {
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; } return s; };
@@ -818,7 +824,7 @@ void main(){ vec3 c = texture2D(s, v).rgb;
   function freeTargets() { Object.values(T).forEach((t) => { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fb); }); T = {}; }
 
   function resize() {
-    DPR = Math.min(1.5, window.devicePixelRatio || 1) * quality;
+    DPR = Math.min(1.25, window.devicePixelRatio || 1) * quality;
     W = canvas.clientWidth; H = canvas.clientHeight;
     canvas.width = Math.max(1, Math.round(W * DPR)); canvas.height = Math.max(1, Math.round(H * DPR));
     if (P) {
@@ -857,8 +863,8 @@ void main(){ vec3 c = texture2D(s, v).rgb;
   function frame(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (dt > 0.028) { slow++; fast = 0; } else if (dt < 0.018) { fast++; slow = 0; }
-    if (slow > 30 && quality > 0.45) { quality *= 0.8; slow = 0; resize(); }
-    if (fast > 240 && quality < 1) { quality = Math.min(1, quality * 1.15); fast = 0; resize(); }
+    if (slow > 10 && quality > 0.3) { quality *= 0.75; slow = 0; resize(); }
+    if (fast > 180 && quality < 1) { quality = Math.min(1, quality * 1.15); fast = 0; resize(); }
 
     const target = st.screen === 'session' && !st.running ? 0 : 1;
     anim.speed += (target - anim.speed) * Math.min(1, dt * 2.5);
@@ -897,14 +903,18 @@ void main(){ vec3 c = texture2D(s, v).rgb;
         gl.uniform1f(p.u('uVis'), .5 - .5 * Math.cos(Math.PI * anim.vis));
         gl.uniform1f(p.u('uPetals'), geo.petals); gl.uniform1f(p.u('uOuter'), geo.outer);
         gl.uniform1f(p.u('uSeg'), geo.seg); gl.uniform1f(p.u('uGeom'), geo.geom);
+        gl.uniform1f(p.u('uAberration'), quality > 0.7 ? 1 : 0);
         gl.uniform3fv(p.u('uBg'), cur.bg); gl.uniform3fv(p.u('uA'), cur.a); gl.uniform3fv(p.u('uB'), cur.b); gl.uniform3fv(p.u('uC'), cur.c); gl.uniform3fv(p.u('uGold'), cur.gold);
       });
+      const highQ = quality > 0.7;
       pass(P.bright, T.A1, (p) => { bind(p, 't', 0, T.S); gl.uniform2f(p.u('px'), 1 / T.S.w, 1 / T.S.h); gl.uniform1f(p.u('th'), 0.58); });
       blur(T.A1, T.A2, 1);
-      pass(P.bright, T.B1, (p) => { bind(p, 't', 0, T.A1); gl.uniform2f(p.u('px'), 1 / T.A1.w, 1 / T.A1.h); gl.uniform1f(p.u('th'), -1); });
-      blur(T.B1, T.B2, 1.6);
+      if (highQ) {
+        pass(P.bright, T.B1, (p) => { bind(p, 't', 0, T.A1); gl.uniform2f(p.u('px'), 1 / T.A1.w, 1 / T.A1.h); gl.uniform1f(p.u('th'), -1); });
+        blur(T.B1, T.B2, 1.6);
+      }
       pass(P.comp, null, (p) => {
-        bind(p, 's', 0, T.S); bind(p, 'b1', 1, T.A1); bind(p, 'b2', 2, T.B1);
+        bind(p, 's', 0, T.S); bind(p, 'b1', 1, T.A1); bind(p, 'b2', 2, highQ ? T.B1 : T.A1);
         gl.uniform1f(p.u('k'), 0.45 + 0.2 * bs.level);
         gl.uniform2f(p.u('res'), canvas.width, canvas.height);
       });
