@@ -867,6 +867,63 @@ void main(){ vec3 c = texture2D(s, v).rgb;
   c += (hash(v*res) - .5) / 255.;
   gl_FragColor = vec4(c, 1.); }`;
 
+  /* ---------- Particles: state (pos.xy, vel.xy in mandala units) lives in a 64x64 float texture, ping-ponged each frame ---------- */
+  const PN = 64;
+  const PHASH = 'float h1(vec2 p){ p = fract(p*vec2(123.34,456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }';
+  const PUPDATE = `precision highp float;varying vec2 v;
+uniform sampler2D uState; uniform float uDt, uTime, uPrevTime, uInit, uBreathVel, uSpin; uniform vec3 uAudio;
+uniform vec2 uRes, uCenter; uniform float uRadius;
+${PHASH}
+// curl of a hand-written stream function: divergence-free, so particles drift in streams instead of clumping
+vec2 curl(vec2 p, float t){
+  float a = 1.3*p.x + .2*t, b = 1.7*p.y - .15*t, c = 2.9*p.y + p.x + .11*t;
+  float dx = 1.3*cos(a)*cos(b) + .5*cos(c), dy = -1.7*sin(a)*sin(b) + 1.45*cos(c);
+  return vec2(dy, -dx);
+}
+void main(){
+  vec2 id = floor(v*${PN}.);
+  float seed = h1(id), life = 7. + 9.*h1(id + 1.3);
+  float now = uTime/life + seed, before = uPrevTime/life + seed;
+  vec4 s = texture2D(uState, v);
+  vec2 pos = s.xy, vel = s.zw;
+  vec2 frag = uCenter + pos*uRadius;
+  bool gone = any(lessThan(frag, vec2(-40.))) || any(greaterThan(frag, uRes + 40.));
+  if (uInit > .5 || floor(now) != floor(before) || gone) {
+    float k = floor(now), maxR = length(uRes)/uRadius*.55;
+    float a = h1(id + k)*6.2831853, r = mix(.95, maxR, pow(h1(id*1.7 + k + 3.1), 1.4));
+    gl_FragColor = vec4(vec2(cos(a), sin(a))*r, 0., 0.);
+    return;
+  }
+  float r = max(length(pos), 1e-3);
+  vec2 dir = pos/r, tang = vec2(-dir.y, dir.x);
+  vec2 f = curl(pos*.9, uTime)*.05;
+  f += tang*.05*uSpin/(.4 + r);                          // slow orbit around the lotus
+  f -= dir*uBreathVel*.7*smoothstep(.2, 1., r);          // inhale draws the cloud in, exhale lets it go
+  f += dir*uAudio.x*.35*exp(-r*.8);                       // a swell in the lows pushes nearby sparks outward
+  f += dir*smoothstep(.35, .12, r)*.8;                    // keep clear of the core
+  vel = (vel + f*uDt)*exp(-uDt*1.2);
+  gl_FragColor = vec4(pos + vel*uDt, vel);
+}`;
+  const PVERT = `attribute vec2 p;
+uniform sampler2D uState; uniform vec2 uRes, uCenter; uniform float uRadius, uPx, uTime; uniform vec3 uAudio;
+uniform vec3 uC, uGold;
+varying float vA; varying vec3 vC;
+${PHASH}
+void main(){
+  vec4 s = texture2D(uState, p);
+  vec2 id = floor(p*${PN}.);
+  float life = fract(uTime/(7. + 9.*h1(id + 1.3)) + h1(id));
+  gl_Position = vec4((uCenter + s.xy*uRadius)/uRes*2. - 1., 0., 1.);
+  float big = h1(id + 5.5);
+  gl_PointSize = (1.1 + 3.2*big*big*big)*uPx*4.*(1. + uAudio.z*.5*step(.75, big));   // mostly fine dust, a few larger sparks
+  vA = sin(life*3.14159) * (.25 + .75*h1(id + 2.2)) * mix(.15, 1., smoothstep(.75, 1.15, length(s.xy)))   // dim over the lotus so it stays readable
+     * (1. + length(s.zw)*3. + uAudio.z*.9*step(.6, big));
+  vC = mix(mix(uC, uGold, h1(id + 8.1)), vec3(1.), .3);
+}`;
+  const PFRAG = `precision mediump float;varying float vA; varying vec3 vC;
+void main(){ float r = length(gl_PointCoord - .5)*4.;   // sprite is 4x the core so the soft halo isn't clipped
+  gl_FragColor = vec4(vC*vA*(exp(-r*r*2.) + .12*exp(-r*1.6)), 1.); }`;
+
   const canvas = el.sky;
   const gl = canvas.getContext('webgl', { antialias: false, alpha: false, depth: false, desynchronized: true, powerPreference: 'high-performance' }) || canvas.getContext('experimental-webgl');
   const anim = { t: 0, breath: 0, speed: 1, spin: 1, wall: 0, bloom: 1, vis: 1, shown: st.chakra };
@@ -878,11 +935,11 @@ void main(){ vec3 c = texture2D(s, v).rgb;
     document.body.appendChild(dbgEl);
   }
   const weakDevice = matchMedia('(pointer: coarse)').matches || (navigator.hardwareConcurrency || 4) <= 4;
-  let P = null, W = 0, H = 0, DPR = 1, quality = weakDevice ? 0.7 : 1, center = [0, 0], radius = 100, T = {};
+  let P = null, PS = null, quadBuf = null, W = 0, H = 0, DPR = 1, quality = weakDevice ? 0.7 : 1, center = [0, 0], radius = 100, T = {};
 
-  function program(fs) {
+  function program(fs, vsrc = VERT) {
     const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { console.error(gl.getShaderInfoLog(s)); return null; } return s; };
-    const vs = sh(gl.VERTEX_SHADER, VERT), f = sh(gl.FRAGMENT_SHADER, fs); if (!vs || !f) return null;
+    const vs = sh(gl.VERTEX_SHADER, vsrc), f = sh(gl.FRAGMENT_SHADER, fs); if (!vs || !f) return null;
     const pr = gl.createProgram(); gl.attachShader(pr, vs); gl.attachShader(pr, f); gl.bindAttribLocation(pr, 0, 'p'); gl.linkProgram(pr);
     if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) { console.error(gl.getProgramInfoLog(pr)); return null; }
     const cache = {};
@@ -892,12 +949,36 @@ void main(){ vec3 c = texture2D(s, v).rgb;
     const progs = { scene: program(SCENE), bright: program(BRIGHT), blur: program(BLUR), comp: program(COMP) };
     if (progs.scene && progs.bright && progs.blur && progs.comp) {
       P = progs;
-      const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      quadBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
       gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+      PS = initParticles();
     }
   }
   if (!P) document.body.classList.add('nogl');
+
+  // Needs float render targets (half floats can't hold the tiny per-frame steps) and vertex texture fetch; otherwise no particles.
+  function initParticles() {
+    if (!gl.getExtension('OES_texture_float') || !gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS)) return null;
+    const state = () => {
+      const tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, PN, PN, 0, gl.RGBA, gl.FLOAT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return ok ? { tex, fb, w: PN, h: PN } : null;
+    };
+    const a = state(), b = state(), update = program(PUPDATE), draw = program(PFRAG, PVERT);
+    if (!a || !b || !update || !draw) return null;
+    const ids = new Float32Array(PN * PN * 2);
+    for (let i = 0; i < PN * PN; i++) { ids[i * 2] = (i % PN + .5) / PN; ids[i * 2 + 1] = ((i / PN | 0) + .5) / PN; }
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, ids, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    return { src: a, dst: b, update, draw, buf, init: true, prevTime: 0, prevLevel: 0 };
+  }
 
   function target(w, h) {
     w = Math.max(1, w | 0); h = Math.max(1, h | 0);
@@ -971,6 +1052,32 @@ void main(){ vec3 c = texture2D(s, v).rgb;
       AU.v[i] += (x - AU.v[i]) * Math.min(1, dt * (x > AU.v[i] ? 10 : 2.5));   // quick bloom, slow afterglow
     }
     return AU.v;
+  }
+
+  function stepParticles(dt, level, au) {
+    const pdt = dt * (0.25 + 0.75 * anim.speed);               // pausing slows the cloud to a drift instead of freezing it
+    const breathVel = dt > 0 ? (level - PS.prevLevel) / dt : 0; PS.prevLevel = level;
+    pass(PS.update, PS.dst, (p) => {
+      bind(p, 'uState', 0, PS.src);
+      gl.uniform1f(p.u('uDt'), pdt); gl.uniform1f(p.u('uTime'), anim.wall); gl.uniform1f(p.u('uPrevTime'), PS.prevTime);
+      gl.uniform1f(p.u('uInit'), PS.init ? 1 : 0); gl.uniform1f(p.u('uBreathVel'), breathVel * anim.speed); gl.uniform1f(p.u('uSpin'), anim.spin);
+      gl.uniform3f(p.u('uAudio'), au[0], au[1], au[2]);
+      gl.uniform2f(p.u('uRes'), T.S.w, T.S.h); gl.uniform2f(p.u('uCenter'), center[0], center[1]); gl.uniform1f(p.u('uRadius'), radius);
+    });
+    [PS.src, PS.dst] = [PS.dst, PS.src]; PS.init = false; PS.prevTime = anim.wall;
+
+    gl.useProgram(PS.draw.pr);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, T.S.fb); gl.viewport(0, 0, T.S.w, T.S.h);
+    const p = PS.draw;
+    bind(p, 'uState', 0, PS.src);
+    gl.uniform2f(p.u('uRes'), T.S.w, T.S.h); gl.uniform2f(p.u('uCenter'), center[0], center[1]); gl.uniform1f(p.u('uRadius'), radius);
+    gl.uniform1f(p.u('uPx'), DPR); gl.uniform1f(p.u('uTime'), anim.wall); gl.uniform3f(p.u('uAudio'), au[0], au[1], au[2]);
+    gl.uniform3fv(p.u('uC'), cur.c); gl.uniform3fv(p.u('uGold'), cur.gold);
+    gl.bindBuffer(gl.ARRAY_BUFFER, PS.buf); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+    gl.drawArrays(gl.POINTS, 0, PN * PN);
+    gl.disable(gl.BLEND);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
   }
 
   // Adaptive resolution aimed at the display's own refresh (60/120/144 Hz), estimated as the 10th-percentile frame interval
@@ -1066,6 +1173,7 @@ void main(){ vec3 c = texture2D(s, v).rgb;
         bind(p, 'uSky', 1, T.N);
         gl.uniform1f(p.u('uSkyPass'), 0); gl.uniform2f(p.u('uFragScale'), 1, 1);
       });
+      if (PS) stepParticles(dt, bs.level, au);
       const highQ = quality > 0.7;
       pass(P.bright, T.A1, (p) => { bind(p, 't', 0, T.S); gl.uniform2f(p.u('px'), 1 / T.S.w, 1 / T.S.h); gl.uniform1f(p.u('th'), 0.58); });
       blur(T.A1, T.A2, 1);
