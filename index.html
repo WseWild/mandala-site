@@ -803,7 +803,7 @@ void main(){
   vec2 frag = gl_FragCoord.xy * uFragScale;   // full-res pixel coords in both passes
   vec2 uv = frag/uRes;
   float W = uWall, T = uTime;
-  vec2 s = frag / uRes.y;
+  vec2 s = (frag - uCenter) / uRes.y;   // sky coords centred on the mandala, so the layers can turn around it
   vec2 p = (frag - uCenter) / uRadius;
   float R = length(p);
   float pa = atan(p.y, p.x);
@@ -811,7 +811,7 @@ void main(){
 
   // Sky pass (quarter res): the nebula and halo are smooth, so their ~64 hashes per pixel are paid on 1/16 of the pixels.
   if (uSkyPass > .5) {
-    vec2 q = uv*vec2(uRes.x/uRes.y, 1.)*1.7;
+    vec2 q = rot(W*.004) * s * 1.7;
     float n1 = fbm(q + vec2(W*.03, -W*.02));
     float n2 = fbm(q*1.3 + n1*1.9 + vec2(-W*.025, W*.018));
     vec3 sky = uBg;
@@ -826,10 +826,11 @@ void main(){
   }
   vec3 col = texture2D(uSky, uv).rgb;
 
-  col += stars(s, 110., .55, .14, vec2(W*.002, W*.001), .3) * .32;
-  col += stars(s, 70., .9, .10, vec2(W*.004, W*.002), .45) * .55;
-  col += stars(s, 38., 1.2, .12, vec2(W*.008, W*.003), .55) * .8;
-  col += stars(s, 16., 1.6, .10, vec2(W*.014, W*.005), .65);
+  // the whole sky turns slowly around the mandala, nearer layers faster (parallax), same direction as the spark cloud
+  col += stars(rot(W*.006) * s, 110., .55, .14, vec2(0.), .3) * .32;
+  col += stars(rot(W*.009) * s, 70., .9, .10, vec2(0.), .45) * .55;
+  col += stars(rot(W*.013) * s, 38., 1.2, .12, vec2(0.), .55) * .8;
+  col += stars(rot(W*.018) * s, 16., 1.6, .10, vec2(0.), .65);
 
   vec2 m = p / (uBreath * (.55 + .45*uVis));
   m *= 1. + uAudio.y*.016*sin(length(m)*28. - uWall*9.);   // mids send a faint ripple through the lotus
