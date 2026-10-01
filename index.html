@@ -47,8 +47,13 @@ h1{margin:0;font-family:var(--display);font-weight:300;font-style:italic;font-si
 .pill[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 .chakras{display:flex;justify-content:center;gap:4px}
 .ch{width:44px;height:44px;border-radius:50%;border:none;background:none;padding:0;cursor:pointer;display:grid;place-items:center}
-.ch .sw{width:32px;height:32px;border-radius:50%;transition:box-shadow .4s,transform .4s}
+.ch .sw{position:relative;width:32px;height:32px;border-radius:50%;isolation:isolate;transition:box-shadow .4s,transform .4s}
+.ch .sw::before{content:'';position:absolute;inset:-7px;z-index:-2;border-radius:50%;background:inherit;filter:blur(7px);opacity:.38;animation:ch-pulse 4.4s ease-in-out infinite;animation-delay:calc(var(--i,0) * -.6s)}
+.ch .sw::after{content:'';position:absolute;inset:0;border-radius:50%;background:conic-gradient(from calc(var(--i,0) * 45deg),transparent 0 35%,rgba(255,255,255,.45) 50%,transparent 65% 100%);mix-blend-mode:overlay;opacity:.5;animation:ch-spin 9s linear infinite;animation-delay:calc(var(--i,0) * -1.1s)}
 .ch[aria-pressed="true"] .sw{transform:scale(1.12);box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--fg),0 0 22px var(--glow)}
+.ch[aria-pressed="true"] .sw::before{opacity:.75;animation-duration:2.6s}
+@keyframes ch-pulse{0%,100%{opacity:.3;transform:scale(.88)}50%{opacity:.7;transform:scale(1.18)}}
+@keyframes ch-spin{to{transform:rotate(360deg)}}
 .ch-name{text-align:center;font-size:13px;color:var(--fg);margin-top:6px}
 .ch-name span{color:var(--fg-soft)}
 .summary{align-self:center;min-height:36px;padding:0 14px;border-radius:18px;border:1px dashed var(--line);background:none;color:var(--fg-soft);font:400 12px var(--ui);cursor:pointer;max-width:100%}
@@ -94,7 +99,7 @@ body.immersed .dim{opacity:0;pointer-events:none}
 .card .row .btn{height:50px;font-size:14px}
 
 @media (max-height:760px){.app{gap:6px;padding-block:14px 14px}.pill{height:40px}.top{min-height:64px}h1{font-size:28px}.cue{font-size:34px}.controls{gap:12px}.btn{height:50px}}
-@media (prefers-reduced-motion:reduce){.fade,.sheet{animation:none}.cue,.dim{transition:none}}
+@media (prefers-reduced-motion:reduce){.fade,.sheet,.ch .sw::before,.ch .sw::after{animation:none}.cue,.dim{transition:none}}
 </style>
 
 </head>
@@ -483,7 +488,8 @@ body.immersed .dim{opacity:0;pointer-events:none}
     CHAKRAS.forEach((c, i) => {
       const b = mk('button', 'ch'); b.type = 'button'; b.id = 'chakra-' + i;
       b.setAttribute('aria-label', c.name + ', ' + c.role);
-      const sw = mk('span', 'sw'); sw.style.background = `radial-gradient(circle at 50% 50%, ${c.gold} 0 12%, ${c.c} 30%, ${c.a} 62%, ${c.b} 100%)`;
+      const sw = mk('span', 'sw'); sw.style.setProperty('--i', i);
+      sw.style.background = `radial-gradient(circle at 50% 50%, ${c.gold} 0 12%, ${c.c} 30%, ${c.a} 62%, ${c.b} 100%)`;
       b.appendChild(sw);
       b.addEventListener('click', () => { st.chakra = i; store.set('chakra', i); applyTheme(); render(); if (A.active) { rebuildAmb(); rebuildBin(); } });
       el.chakras.appendChild(b);
@@ -653,14 +659,21 @@ float sdBox(vec2 p, vec2 b){ vec2 d = abs(p)-b; return length(max(d,0.)) + min(m
 float sdTri(vec2 p, float r){ const float k = 1.7320508; p.x = abs(p.x) - r; p.y = p.y + r/k;
   if (p.x + k*p.y > 0.) p = vec2(p.x - k*p.y, -k*p.x - p.y)/2.; p.x -= clamp(p.x, -2.*r, 0.); return -length(p)*sign(p.y); }
 
-vec3 stars(vec2 s, float cells, float size, float density, vec2 drift){
+vec3 stars(vec2 s, float cells, float size, float density, vec2 drift, float twinkle){
   vec2 g = s*cells + drift; vec2 id = floor(g), f = fract(g);
   float h = hash(id); if (h > density) return vec3(0.);
   vec2 pos = .2 + .6*hash2(id + 3.7);
-  float d = length(f - pos) * uRes.y / (cells * uPx);
-  float b = .35 + .65*hash(id + 9.1);
+  vec2 off = (f - pos) * uRes.y / (cells * uPx);
+  float d = length(off);
+  float seed = hash(id + 9.1);
+  float phase = hash(id + 2.3) * TAU;
+  float tw = mix(1., .5 + .5*sin(uWall*(1.1 + seed*1.6) + phase), twinkle);
+  float b = (.35 + .65*seed) * tw;
   vec3 tint = mix(vec3(1.), mix(uC, uGold, hash(id + 5.3)), .35);
-  return tint * b * exp(-d*d / (size*size));
+  float glow = exp(-d*d / (size*size));
+  float hero = step(.91, seed);                                   // ~9% of stars are bright enough for a diffraction glint
+  float spike = hero * exp(-d*.7) * (exp(-abs(off.x)*1.8) + exp(-abs(off.y)*1.8)) * .3;
+  return tint * b * (glow + spike);
 }
 
 float yantra(vec2 q){
@@ -729,17 +742,19 @@ void main(){
   col += uB * smoothstep(.45, 1., fbm(q*.8 + n2 + 3.1)) * .32;
   col += uC * smoothstep(.5, 1., n1*n2*1.7) * .16;
 
-  col += stars(s, 70., .9, .10, vec2(W*.004, W*.002)) * .55;
-  col += stars(s, 38., 1.2, .12, vec2(W*.008, W*.003)) * .8;
-  col += stars(s, 16., 1.6, .10, vec2(W*.014, W*.005));
+  col += stars(s, 110., .55, .14, vec2(W*.002, W*.001), .3) * .32;
+  col += stars(s, 70., .9, .10, vec2(W*.004, W*.002), .45) * .55;
+  col += stars(s, 38., 1.2, .12, vec2(W*.008, W*.003), .55) * .8;
+  col += stars(s, 16., 1.6, .10, vec2(W*.014, W*.005), .65);
 
   vec2 p = (frag - uCenter) / uRadius;
   float R = length(p);
   float pa = atan(p.y, p.x);
   float inhale = (uBreath - .9) / .12;
 
-  float rays = pow(.5 + .5*cos(pa*18. + sin(T*.2)*.8), 10.) + .6*pow(.5 + .5*cos(pa*7. - T*.13), 14.);
-  col += mix(uA, uGold, .45) * rays * smoothstep(.55, 1.05, R) * exp(-(R - 1.)*1.4) * (.08 + .16*inhale) * uVis;
+  float haloN = .7 + .3*fbm(vec2(pa*1.3 + T*.04, R*2. - T*.06));   // organic drift instead of a fixed spike count
+  float halo = smoothstep(.55, 1.08, R) * exp(-(R - 1.)*1.5) * haloN;
+  col += mix(uA, uGold, .45) * halo * (.09 + .17*inhale) * uVis;
 
   vec2 m = p / (uBreath * (.55 + .45*uVis));
   vec3 mG = mandala(m, T);
