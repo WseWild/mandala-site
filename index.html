@@ -771,7 +771,7 @@ vec3 lotus(vec2 p, float inhale){
   for (int i = 0; i < 80; i++) {
     vec2 res = map(ro + rd*t);
     float dt = res.x*.8;
-    glow += (glowCore*exp(-gCore*8.)*(1.4 + uAudio.x*1.2) + glowEm*exp(-gEm*50.)*(.9 + uAudio.z*.8)) * min(dt, .08);
+    glow += (glowCore*exp(-gCore*8.)*(1.4 + uAudio.x*.45) + glowEm*exp(-gEm*50.)*(.9 + uAudio.z*.8)) * min(dt, .08);
     if (res.x < .001*t) { id = res.y; break; }
     t += dt;
     if (t > tEnd) break;
@@ -836,7 +836,7 @@ void main(){
   vec3 mand = lotus(m, inhale) * uVis;
   mand = hueShift(mand, sin(W*.11)*.5);
   mand = 1. - exp(-mand*1.5);
-  col += mix(uA, uB, .5) * exp(-R*3.3) * (.25 + .15*inhale + .3*uAudio.x);
+  col += mix(uA, uB, .5) * exp(-R*3.3) * (.25 + .15*inhale + .12*uAudio.x);
   col += mix(uB, uGold, .3) * exp(-R*R*19.) * .18 * inhale;
   col += mand;
 
@@ -973,13 +973,27 @@ void main(){ vec3 c = texture2D(s, v).rgb;
     return AU.v;
   }
 
-  let last = performance.now(), slow = 0, fast = 0;
+  // Adaptive resolution aimed at the display's own refresh (60/120/144 Hz), estimated as the 10th-percentile frame interval
+  // of each half-second window: drop resolution while we can't keep up, creep back up after a cooldown once we can.
+  const PF = { dts: [], hz: 60, ok: 0, cool: 0 };
+  function adapt(dt) {
+    PF.dts.push(dt); PF.cool -= dt;
+    const span = PF.dts.reduce((a, b) => a + b, 0);
+    if (span < 0.5) return;
+    const sorted = PF.dts.slice().sort((a, b) => a - b);
+    PF.hz = 1 / Math.max(sorted[Math.floor(sorted.length * 0.1)], 1 / 240);
+    const fps = PF.dts.length / span;
+    PF.dts.length = 0;
+    if (fps < PF.hz * 0.85 && quality > 0.35) { quality *= 0.88; PF.ok = 0; PF.cool = 8; resize(); }
+    else if (fps > PF.hz * 0.96 && quality < 1) { if (++PF.ok >= 6 && PF.cool <= 0) { quality = Math.min(1, quality * 1.08); PF.ok = 0; resize(); } }
+    else PF.ok = 0;
+  }
+
+  let last = performance.now();
   let dbgFrames = 0, dbgTime = 0;
   function frame(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
-    if (dt > 0.028) { slow++; fast = 0; } else if (dt < 0.018) { fast++; slow = 0; }
-    if (slow > 10 && quality > 0.3) { quality *= 0.75; slow = 0; resize(); }
-    if (fast > 180 && quality < 1) { quality = Math.min(1, quality * 1.15); fast = 0; resize(); }
+    adapt(dt);
     const au = readAudio(dt);
 
     if (dbgEl) {
@@ -990,7 +1004,7 @@ void main(){ vec3 c = texture2D(s, v).rgb;
           + '\nDPR ' + DPR.toFixed(2)
           + '\ncanvas ' + canvas.width + 'x' + canvas.height
           + '\nbloom ' + (quality > 0.7 ? 'full' : 'half')
-          + '\nslow/fast ' + slow + '/' + fast
+          + '\ndisplay ' + PF.hz.toFixed(0) + ' Hz'
           + '\naudio ' + au.map((x) => x.toFixed(2)).join(' ');
         dbgFrames = 0; dbgTime = 0;
       }
@@ -1051,7 +1065,7 @@ void main(){ vec3 c = texture2D(s, v).rgb;
       }
       pass(P.comp, null, (p) => {
         bind(p, 's', 0, T.S); bind(p, 'b1', 1, T.A1); bind(p, 'b2', 2, highQ ? T.B1 : T.A1);
-        gl.uniform1f(p.u('k'), 0.45 + 0.2 * bs.level + 0.3 * au[0]);
+        gl.uniform1f(p.u('k'), 0.45 + 0.2 * bs.level + 0.15 * au[0]);
         gl.uniform2f(p.u('res'), canvas.width, canvas.height);
       });
     }
